@@ -1,0 +1,124 @@
+#!/bin/bash
+# vim: fdm=marker
+
+# Top level command to manage a java project from the command line.
+
+JPRJ_BASE="${JPRJ_BASE:-.jprj}"
+POM_MD5="${POM_MD5:-$JPRJ_BASE/pom.hsh}"
+CLASSPATH_FILE="${CLASSPATH_FILE_DIR:-$JPRJ_BASE/classpath.txt}"
+JAVAFILES="${JAVAFILES:-$JPRJ_BASE/java.src}"
+TESTJAVAFILES="${JAVAFILES:-$JPRJ_BASE/java.test.src}"
+JPRJ_MAVEN_OUTPUT_FILE="${JPRJ_MAVEN_OUTPUT_FILE:-$JPRJ_BASE/maven.out}"
+JPRJ_BUILD_ORDER=${JPRJ_BUILD_ORDER:-$JPRJ_BASE/build.order}
+JPRJ_COMPILE_COMMANDS=${JPRJ_COMPILE_COMMANDS:-$JPRJ_BASE/compile.sh}
+JPRJ_COMPILER_OUTPUT=${JPRJ_COMPILER_OUTPUT:-$JPRJ_BASE/compiler.output}
+
+
+# ensure this is a maven project
+if [[ ! -f pom.xml ]]; then
+    echo 'ERROR:  There is no pom.xml in this directory.'
+    exit -1
+fi
+
+#{{{
+run () {
+    CMD=$1
+
+    if [[ $CMD != "init" && ! -d $JPRJ_BASE ]]; then
+        echo "This doesn't appear to be a project managed by jprj!"
+        echo "Run 'jpr init' to initialize jprj!"
+    fi
+
+    case $CMD in
+        init)
+            init
+            ;;
+        compile)
+            shift
+            compile $@
+            ;;
+        refresh)
+            build_javac_classpaths
+            ;;
+        clean)
+            clean
+            ;;
+        *)
+            echo "Unsupported command!"
+            exit 1
+            ;;
+    esac
+}
+#}}}
+
+clean () {
+    echo "Cleaning all traces of jprj!"
+
+    for dir in $(find . -name .jprj -type d); do
+        echo "Removing $dir"
+        rm -rf $dir
+    done
+
+    echo "To start using jprj again, run 'jpr init'!"
+}
+
+init () {
+    echo "Initializing jprj!"
+
+    [[ -d $JPRJ_BASE ]] || mkdir $JPRJ_BASE
+    build_javac_classpaths
+
+    echo "Initialization complete, jprj is ready to use!"
+}
+
+#{{{
+compile () {
+    if [[ -z $@ ]]; then
+        modules=$(cat $JPRJ_BUILD_ORDER)
+    else
+        modules=$@
+    fi
+
+    if [[ -f $JPRJ_COMPILE_COMMANDS ]]; then
+        mv $JPRJ_COMPILE_COMMANDS ${JPRJ_COMPILE_COMMANDS}.bak
+    fi
+
+    for module in $modules; do
+        echo $module
+        find $module/src/main -name \*java -type f > $module/$JAVAFILES
+
+        [[ -d $module/target/classes ]] || mkdir --parents $module/target/classes
+        COMPILE_CMD="javac -g $JPRJ_COMPILE_OPTS -cp $(cat $module/$CLASSPATH_FILE) -d $module/target/classes @$module/$JAVAFILES"
+
+        echo $COMPILE_CMD >> $JPRJ_COMPILE_COMMANDS
+        $COMPILE_CMD | tee $JPRJ_COMPILER_OUTPUT
+    done
+}
+#}}}
+
+#{{{
+build_javac_classpaths () {
+    rebuild_classpath=""
+
+    if [[ ! -f $POM_MD5 ]]; then
+        md5sum $(find . -name pom.xml -type f) > $POM_MD5
+        rebuild_classpath="true"
+    fi
+
+    [[ $(md5sum --status -c $POM_MD5) ]] && rebuild_classpath="true"
+
+    if [[ ! -z $rebuild_classpath ]]; then
+        echo "Possible dependency changes detected.  Updating build classpaths."
+        mvn dependency:build-classpath -Dmdep.outputFile=$CLASSPATH_FILE > $JPRJ_MAVEN_OUTPUT_FILE
+
+        # update the md5sums for the pom files
+        md5sum $(find . -name pom.xml -type f) > $POM_MD5
+        
+        # grab the module build order from the maven output
+        parse_maven $JPRJ_MAVEN_OUTPUT_FILE $JPRJ_BUILD_ORDER
+    fi
+}
+#}}}
+
+run $@
+
