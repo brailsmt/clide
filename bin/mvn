@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# Wrapper around maven to always save the output.  
-
-JPRJ_MAVEN_OUTPUT_FILE="${JPRJ_MAVEN_OUTPUT_FILE:-.jprj/maven.out}"
-
-MVNCMD=/usr/local/bin/mvn
-
-$MVNCMD $@ | tee .jprj/maven.out

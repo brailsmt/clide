@@ -1,0 +1,39 @@
+#!/usr/bin/env ruby
+
+require 'set'
+require 'pp'
+
+# Parse a maven output file to generate an error file that vim can use in the quickfix window.
+
+ERRORS = []
+
+def main(args)
+  maven_output = args[0]
+  File.open(maven_output) { |file|
+    file.each_line { |line|
+      begin
+        extract_junit_test_failures line
+      rescue
+        next
+      end
+    }
+  }
+
+  files = [].to_set
+  ERRORS.each { |err|
+    files << Dir["target/surefire-reports/#{err[:class]}.txt"].first
+  }
+
+  files.each { |f|
+    puts f
+  }
+end
+
+def extract_junit_test_failures(line)
+  if line =~ /<<<\s*ERROR!\s*$/
+    (test, cls) = line.split(/[()]/)
+    ERRORS << {:test => test, :class => cls}
+  end
+end
+
+main ARGV
