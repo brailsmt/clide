@@ -6,11 +6,15 @@ JPR_MAVEN_OUTPUT_FILE="${JPR_MAVEN_OUTPUT_FILE:-.jpr/maven.out}"
 
 MVNCMD=/usr/local/bin/mvn
 
-alert_sound='Glass'
+module=$(basename $(pwd))
+
 
 echo "$MVNCMD $@"
 $MVNCMD $@ | tee $JPR_MAVEN_OUTPUT_FILE
 mvnstatus=${PIPESTATUS[0]}
-[[ $mvnstatus -eq 1 ]] && alert_sound='Basso'
-module=$(basename $(pwd))
-terminal-notifier -message "$MVNCMD $(echo $@ | sed 's/-/\-/g')" -title "$module build finished" -group "$module: jpr build" -sound $alert_sound
+
+if [[ $mvnstatus -eq 1 ]]; then
+    terminal-notifier -message "\"$MVNCMD $(echo $@ | sed 's/-/\-/g')\"" -title "$module build failed!" -group "$module: jpr build" -sound "Basso"
+else
+    terminal-notifier -message "\"$MVNCMD $(echo $@ | sed 's/-/\-/g')\"" -title "$module build succeeded!" -group "$module: jpr build" -sound "Glass"
+fi

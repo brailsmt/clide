@@ -1,39 +1,143 @@
 #!/usr/bin/env ruby
 
+require 'nokogiri'
 require 'set'
 require 'pp'
 
 # Parse a maven output file to generate an error file that vim can use in the quickfix window.
+# This is a quick hack it will be cleaned up later
 
-ERRORS = []
+TEST_ISSUES_REGEX    = /^(?<method>.*?)[(](?<cls>.*?)[)].*?<<<\s*((?<err>E)RROR|(?<fail>F)AILURE)!\s*$/
+COMPILE_ISSUES_REGEX = %r#^\[((?<err>E)RROR|(?<warn>W)ARNING)\]\s+(?<file>[\w/.-]+):\[(?<lnum>\d+),(?<col>\d+)\]\s*(?<msg>.*)$#
+VIM_TYPE = { :compile_errors => 'E', :test_errors => 'E', :test_failures => 'E', :compile_warnings => 'W' }
 
 def main(args)
+  # parse args to allow the consumer to specify to output only compile errors, compile warnings, test errors, test
+  # failures, compile errors and warnings, test errors and warnings, or everything
+  types = [:compile_errors, :test_errors, :test_failures]  #default to just compile and test errors
   maven_output = args[0]
-  File.open(maven_output) { |file|
-    file.each_line { |line|
-      begin
-        extract_junit_test_failures line
-      rescue
-        next
-      end
+  input = File.open(maven_output)
+
+  mvn_outcomes = mvn_failures input
+
+  generate_vim_errorfile types, mvn_outcomes
+end
+
+def generate_vim_errorfile(allowed_types, outcomes)
+  allowed_types.each { |type|
+    results = outcomes.get_outcomes_for type
+    next if results.empty?
+
+    vim_type = VIM_TYPE[type]
+    results.each { |result|
+      puts "#{vim_type} #{result[:file]} #{result[:line]} #{result[:col]} #{result[:message]}"
     }
-  }
-
-  files = [].to_set
-  ERRORS.each { |err|
-    files << Dir["target/surefire-reports/#{err[:class]}.txt"].first
-  }
-
-  files.each { |f|
-    puts f
   }
 end
 
-def extract_junit_test_failures(line)
-  if line =~ /<<<\s*ERROR!\s*$/
-    (test, cls) = line.split(/[()]/)
-    ERRORS << {:test => test, :class => cls}
+
+#{{{
+def get_mvn_test_details(outcomes)
+#  outcomes.each { |file|
+#    puts file
+#
+#    doc = Nokogiri::XML(File.open(file), nil, 'utf-8')
+#
+#    doc.xpath("/testsuite/testcase[error or failure]").each { |testcase|
+#      children = testcase.children
+#      children.each { |n|
+#        puts n.name
+#      }
+#      etype = error.attr("type").value
+#      type = testcase.name
+#
+#      message = error.text
+#      #(file, line, col) = get_location message
+#
+#      attrs = testcase.attributes
+#      cls = attrs["classname"].value
+#      method = attrs["name"].value
+#
+#      puts "#{type} #{cls}.#{method}" #{message}"
+#    }
+#  }
+  nil
+end
+#}}}
+
+class JUnitOutcome
+end
+
+class JavacOutcome
+end
+
+#{{{
+class MavenOutcomes
+  attr_accessor :test_errors, :test_failures, :compile_errors, :compile_warnings
+
+  def initialize
+    @test_errors      = []
+    @test_failures    = []
+    @compile_errors   = []
+    @compile_warnings = []
   end
+
+  def get_outcomes_for(type)
+    case type
+      when :test_errors
+        @test_errors
+      when :test_failures
+        @test_failures
+      when :compile_errors
+        @compile_errors
+      when :compile_warnings
+        @compile_warnings
+      else
+        nil
+    end
+  end
+end
+#}}}
+
+def mvn_failures(file)
+  outcomes = MavenOutcomes.new
+
+  file.each_line { |line|
+    begin
+      case line
+        when TEST_ISSUES_REGEX
+          method = $~["method"]
+          cls = $~["cls"]
+          type = ($~["err"] || $~["fail"]).downcase
+          if type == 'e'
+            outcomes.test_errors << {:method => method, :class => cls, :type => type}
+          elsif type == 'f'
+            outcomes.test_failures << {:method => method, :class => cls, :type => type}
+          end
+
+        when COMPILE_ISSUES_REGEX
+          type = $1 || $2
+          (file, linenum, col, msg) = $~[3..$~.size]
+          if type.downcase == 'e'
+            outcomes.compile_errors << {:file => file, :line => linenum, :col => col, :message => msg}
+          elsif type.downcase == 'w'
+            outcomes.compile_warnings << {:file => file, :line => linenum, :col => col, :message => msg}
+          end
+
+      end
+    rescue
+      next
+    end
+  }
+
+  outcomes
+end
+
+def is_parent?(dir)
+  # Do some pom.xml parsing, this belongs in a class by itself...  only not now
+  doc = Nokogiri::XML(File.open("pom.xml"), nil, 'utf-8')
+  ns = doc.collect_namespaces['xmlns']
+  doc.xpath("/ns:project/ns:modules", {'ns' => ns})
 end
 
 main ARGV
