@@ -1,5 +1,5 @@
 function! LoadOnlyMavenErrors()
-    cgetfile .jpr/maven.out
+    cgetfile .clide/maven.out
 
     let l:mavenOutput = getqflist()
     call setqflist([],'r') 
@@ -12,7 +12,7 @@ function! LoadOnlyMavenErrors()
 endfunction
 
 function! LoadOnlyMavenWarnings()
-    cgetfile .jpr/maven.out
+    cgetfile .clide/maven.out
 
     let l:mavenOutput = getqflist()
     call setqflist([],'r') 
