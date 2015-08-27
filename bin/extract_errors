@@ -12,9 +12,6 @@ COMPILE_ISSUES_REGEX = %r#^\[((?<err>E)RROR|(?<warn>W)ARNING)\]\s+(?<file>[\w/.-
 VIM_TYPE = { :compile_errors => 'E', :test_errors => 'E', :test_failures => 'E', :compile_warnings => 'W' }
 
 def main(args)
-  # parse args to allow the consumer to specify to output only compile errors, compile warnings, test errors, test
-  # failures, compile errors and warnings, test errors and warnings, or everything
-  types = [:compile_errors, :test_errors, :test_failures]  #default to just compile and test errors
   maven_output = args[0]
   input = File.open(maven_output)
 
@@ -23,14 +20,15 @@ def main(args)
   generate_vim_errorfile types, mvn_outcomes
 end
 
-def generate_vim_errorfile(allowed_types, outcomes)
-  allowed_types.each { |type|
+def generate_vim_errorfile(outcomes)
+  output_order = [:compile_errors, :test_errors, :test_failures, :compile_warnings] 
+  output_order.each { |type|
     results = outcomes.get_outcomes_for type
     next if results.empty?
 
     vim_type = VIM_TYPE[type]
     results.each { |result|
-      puts "#{vim_type} #{result[:file]} #{result[:line]} #{result[:col]} #{result[:message]}"
+      puts result.to_vim_errorformat
     }
   }
 end
@@ -65,11 +63,41 @@ def get_mvn_test_details(outcomes)
 end
 #}}}
 
-class JUnitOutcome
+#{{{
+class Result
+  def to_vim_errorformat
+  end
 end
+#}}}
+#{{{
+class TestResult < Result
 
-class JavacOutcome
+  def to_vim_errorformat
+      "#{vim_type} #{result[:file]} #{result[:line]} #{result[:col]} #{result[:message]}"
+  end
 end
+#}}}
+#{{{
+class CompileResult < Result
+  def CompileResult.build(input) 
+    if input =~ TEST_ISSUES_REGEX
+      method = $~["method"]
+      cls = $~["cls"]
+      type = ($~["err"] || $~["fail"]).downcase
+      if type == 'e'
+        outcomes.test_errors << {:method => method, :class => cls, :type => type}
+      elsif type == 'f'
+        outcomes.test_failures << {:method => method, :class => cls, :type => type}
+      end
+    else
+      nil
+  end
+
+  def to_vim_errorformat
+      "#{vim_type} #{result[:file]} #{result[:line]} #{result[:col]} #{result[:message]}"
+  end
+end
+#}}}
 
 #{{{
 class MavenOutcomes
@@ -103,6 +131,8 @@ def mvn_failures(file)
   outcomes = MavenOutcomes.new
 
   file.each_line { |line|
+    cresult = CompileResult.new(line)
+    tresult = TestResult.new(line)
     begin
       case line
         when TEST_ISSUES_REGEX
