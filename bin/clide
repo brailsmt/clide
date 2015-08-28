@@ -45,9 +45,19 @@ def main
   end
 end
 
-main 
-pom = POM.new 'pom.xml'
-puts pom.namespaces
+def build_classpath(deps, project)
+  classpath = []
+  deps['program-runtime-pipeline'].each { |dep|
+    classpath << dep.get_path_to_dep
+  }
+  classpath.join ':'
+end
 
-pp pom.get_dependencies
+#main 
+pom = POM.new 'pom.xml'
+
+pom.build_effective_pom
+epom = POM.new pom.epom_fname
+deps = epom.get_dependencies
+puts build_classpath deps, 'program-runtime-pipeline'
 

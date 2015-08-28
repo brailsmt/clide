@@ -7,11 +7,42 @@ require 'nokogiri'
 require 'parseconfig'
 require 'pp'
 
+##
+# Simple class for a single Dependency
+#{{{
+class Dependency
+    attr_accessor :groupId, :artifactId, :version, :scope, :m2_relative_path
+
+    def initialize(pom_dep_node)
+        ns = pom_dep_node.namespaces
+        @groupId    = pom_dep_node.xpath('./xmlns:groupId/text()', ns).text.strip
+        @artifactId = pom_dep_node.xpath('./xmlns:artifactId/text()', ns).text.strip
+        @version    = pom_dep_node.xpath('./xmlns:version/text()', ns).text.strip
+        @scope      = pom_dep_node.xpath('./xmlns:scope/text()', ns).text.strip
+        @scope = 'compile' if @scope.empty?
+
+        grp_path = @groupId.gsub /\./, "/"
+        @m2_relative_path = "#{grp_path}/#{@artifactId}/#{@version}"
+    end
+
+    def get_maven_coordinate
+        "#{@groupId}:#{@artifactId}:#{@version}"
+    end
+
+    def get_path_to_dep(m2repo = "#{ENV['HOME']}/.m2/repository")
+        "#{m2repo}/#{@m2_relative_path}/#{@artifactId}-#{@version}.jar"
+    end
+end
+#}}}
+
+##
+# Manage all things related to a maven pom.
+#{{{
 class POM
     attr_accessor :raw_pom, :deps, :classpath, :props, :pom
     attr_accessor :group_id, :project_id, :version
     attr_accessor :parent_gid, :parent_pid, :parent_version
-    attr_accessor :project_root, :filename
+    attr_accessor :project_root, :filename, :namespaces, :dependencies
 
     ##
     # Find the parent pom, assuming the pom in the current directory is the parent and then searching up the directory tree
@@ -54,15 +85,15 @@ class POM
     #}}}
 
     def initialize(fname)
-        @project_root = File.dirname(File.absolute_path(fname))
+        @namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' }
         @filename = fname
-        @pom = Nokogiri::XML(File.open(fname, 'r'))
+        @project_root = File.dirname(File.absolute_path(@filename))
+        @pom = Nokogiri::XML(File.open(@filename, 'r'))
+        @dependencies = {}
     end
 
     def has_parent?
-        puts @pom.namespaces
-        @pom.xpath "/projects/project"
-        parent = @pom.xpath "//xmlns:parent", @pom.namespaces
+        parent = @pom.xpath "//xmlns:parent", @namespaces
         !parent.empty?
     end
 
@@ -81,25 +112,29 @@ class POM
     end
     
     def build_effective_pom
+        return if File.exists? epom_fname
+
         Dir.mkdir ".clide" unless Dir.exist? ".clide"
 
         `mvn help:effective-pom -Doutput=#{epom_fname}`
     end
 
     def get_dependencies
-        #build_effective_pom unless File.exists? epom_fname
+        parent = @pom.xpath "//xmlns:project[xmlns:modules]", @namespaces
+        projects = @pom.xpath "//xmlns:project[not(xmlns:modules)]", @namespaces
 
-        #pom = Nokogiri::XML(File.open('pom.xml', 'r'))
-        deps_nodeset = @pom.xpath "/xmlns:project/xmlns:dependencies/xmlns:dependency", @pom.namespaces #/xmlns:dependency", @pom.namespaces
-        pp deps_nodeset
-#        deps_nodeset.each { |dep|
-#            group = dep.xpath
-#            project = dep.xpath
-#            version = dep.xpath
-#        }
-        deps_nodeset
+        projects.each { |prj|
+            project_name = prj.xpath('./xmlns:name/text()', prj.namespaces).text
+            @dependencies[project_name] = []
+
+            prj.xpath("//xmlns:dependencies/xmlns:dependency", prj.namespaces).each { |dep|
+                @dependencies[project_name] << Dependency.new(dep)
+            }
+        }
+        @dependencies
     end
 
     def load_props
     end
 end
+#}}}
