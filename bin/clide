@@ -34,30 +34,40 @@ def grab_imports(pom, args = nil)
   pp pom.get_dependencies
 end
 
+def build_classpath(pom_fname, project)
+  pom = POM.new pom_fname
+  classpath = []
+  deps[project].each { |dep|
+    classpath << dep.get_path_to_dep
+  }
+  classpath.join ':'
+end
+
+#{{{
+def register_command(name, fn)
+  if $commands.has_key? name
+    puts "A command for #{name} already exists!  Aborting!"
+    puts "If you really want to override the #{name} command, use register_command!()."
+    false
+  else
+    $commands[name] = fn
+    true
+  end
+end
+#}}}
+
 def main
   command = ARGV.shift
 
   case command
   when 'jimp'
     grab_imports POM.find_parent_pom
+  when 'gencp'
+    build_classpath ARGV[0], ARGV[1]
   else
     puts "Not implemented yet!"
   end
 end
 
-def build_classpath(deps, project)
-  classpath = []
-  deps['program-runtime-pipeline'].each { |dep|
-    classpath << dep.get_path_to_dep
-  }
-  classpath.join ':'
-end
 
-#main 
-pom = POM.new 'pom.xml'
-
-pom.build_effective_pom
-epom = POM.new pom.epom_fname
-deps = epom.get_dependencies
-puts build_classpath deps, 'program-runtime-pipeline'
-
+main 
