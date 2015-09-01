@@ -2,14 +2,14 @@
 # vim: fdm=marker ts=2 sw=2
 # author:     Michael Brailsford
 # created:    2015-08-23 06:09:24 -0500
-# contents:   Parse a pom.xml and extract useful information
+# contents:   A clide utility to parse a maven pom and provide useful information about a project.
 
 require 'nokogiri'
 require 'parseconfig'
 require 'pp'
+require 'digest'
 require_relative 'utilities'
-
-EPOM_FNAME=".clide/epom.xml"
+require_relative 'config'
 
 ##
 # Simple class for a single Dependency
@@ -43,41 +43,27 @@ end
 # Manage all things related to a maven pom.
 #{{{
 class POM
-  attr_accessor :raw_pom, :deps, :classpath, :props, :pom
-  attr_accessor :group_id, :project_id, :version
-  attr_accessor :parent_gid, :parent_pid, :parent_version
-  attr_accessor :project_root, :filename, :namespaces, :dependencies
+  CONF = ClideConfig.instance
+
+  attr_accessor :pom, :group_id, :project_id, :version, :is_parent
+  attr_accessor :project_root, :filename, :namespaces, :dependencies, :modules
 
   def initialize(fname)
     return unless File.exists? fname
-    @namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' }
-    @filename = fname
+    
+    @filename     = fname
     @project_root = File.dirname(File.absolute_path(@filename))
-    @pom = Nokogiri::XML(File.open(@filename, 'r'))
-    @dependencies = {}
+
+    @pom          = Nokogiri::XML(File.open(@filename, 'r'))
+    @namespaces   = @pom.namespaces
+    @namespaces   = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' } if @namespaces.empty?
+    @is_parent    = ! has_parent?
+    @modules      = @pom.xpath "//xmlns:modules/xmlns:module/text()", @namespaces
+
+    init_dependencies
   end
 
-  def has_parent?
-    return true if @pom == nil
-    parent = @pom.xpath "//xmlns:parent", @namespaces
-    !parent.empty?
-  end
-
-  def gen_md5
-    # generate md5s for all poms
-  end
-
-  def poms_have_been_updated?
-    gen_md5 unless File.exists? POM_MD5
-
-    true
-  end
-
-  def epom_fname
-    ".clide/epom.xml"
-  end
-
-  def get_dependencies
+  def init_dependencies
     parent = @pom.xpath "//xmlns:project[xmlns:modules]", @namespaces
     projects = @pom.xpath "//xmlns:project[not(xmlns:modules)]", @namespaces
 
@@ -92,8 +78,41 @@ class POM
     @dependencies
   end
 
-  def load_props
+  def has_parent?
+    return true if @pom == nil
+    parent = @pom.xpath "//xmlns:parent", @namespaces
+    !parent.empty?
   end
+
+  def update_md5
+      puts CONF[:pom_md5]
+      File.open(CONF[:pom_md5], 'w+') { |file|
+          modules.each { |m|
+              pom = "#{m}/pom.xml"
+              puts "#{pom} #{Digest::MD5.file pom}"
+
+              file.puts "#{pom} #{Digest::MD5.file pom}"
+          }
+      }
+  end
+
+  def poms_have_been_updated?
+    return true unless File.exists? CONF[:pom_md5]
+
+    File.open(CONF[:pom_md5], 'r').each_line { |line|
+        (pom_fname, previous_md5) = line.split %r{\s+}
+        current_md5 = Digest::MD5.file pom_fname
+
+        return true if current_md5 != previous_md5
+    }
+    false
+  end
+
+  def epom_fname
+    ".clide/epom.xml"
+  end
+
+  private :epom_fname, :init_dependencies, :has_parent?
 end
 #}}}
 
@@ -113,7 +132,7 @@ end
 def build_effective_pom
     Dir.mkdir ".clide" unless Dir.exist? ".clide"
 
-    `mvn help:effective-pom -Doutput=#{EPOM_FNAME}`
+    `mvn help:effective-pom -Doutput=#{CONF[:effective_pom]}`
 end
 #}}}
 
@@ -122,5 +141,27 @@ def load_effective_pom
     return POM.new EPOM_FNAME if File.exists? EPOM_FNAME
     
     build_effective_pom
+end
+#}}}
+
+##
+# Find the parent pom, assuming the pom in the current directory is the parent and then searching up the directory tree
+# if that is not that case.
+#{{{
+def find_project_root_directory
+    dir_with_pom = search_up_for("pom.xml")
+    return nil if dir_with_pom.nil?
+
+    pom = POM.new "#{dir_with_pom}/pom.xml"
+    while not pom.is_parent?
+        if dir_with_pom == Dir.home
+            dir_with_pom = nil
+            break
+        end
+
+        dir_with_pom = search_up_for("pom.xml", {start_dir: dir_with_pom})
+        pom = POM.new "#{dir_with_pom}/pom.xml"
+    end
+    dir_with_pom
 end
 #}}}

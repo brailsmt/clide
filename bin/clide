@@ -31,7 +31,7 @@ require_relative '../lib/pom'
 ## END CONFIG
 
 def grab_imports(pom, args = nil)
-  pp pom.get_dependencies
+  pp pom.dependencies
 end
 
 def build_classpath(pom_fname, project)
