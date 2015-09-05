@@ -4,6 +4,7 @@
 # created:    2015-08-28 00:20:12 -0500
 # contents:   
 
+require 'pp'
 require 'pathname'
 
 #{{{
@@ -11,15 +12,12 @@ def search_up_for(filename, opt_hsh = {})
   dir      = Pathname.new(opt_hsh[:start_dir] || Pathname::pwd)
   stop_dir = Pathname.new(opt_hsh[:stop_dir] || ENV['HOME'])
 
-  poms = []
+  found_files = []
   dir.ascend { |path|
-      pom = path + filename
-      poms << path if pom.exist?
-      puts path.realpath
-      puts stop_dir.realpath
+      found_file = path + filename
+      found_files << path.realpath if found_file.exist?
       break if path.realpath == stop_dir.realpath
   }
-  poms
+  found_files
 end
 #}}}
-

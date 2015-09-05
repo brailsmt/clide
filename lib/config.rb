@@ -21,38 +21,38 @@ class ClideConfig
     # directory in the current working directory or its parent.
     #{{{
     def initialize
-        #@params          = (File.exists? user_cliderc) ? ParseConfig.new(user_cliderc).params : {}
-        # Bare minimum configuration that clide requires
-        @params = {user_clide_config: Pathname.new(ENV['USER_CLIDERC'] || "#{ENV['HOME']}/.cliderc")}
+        clide_conf_dir = Pathname.new(".clide")
+        cliderc        = ".cliderc"
 
-
-        clide_config_dir = Pathname.new(@params['config.dir']      || ENV['CLIDE_CONFIG_DIR'] || ".clide")
-        cliderc          = Pathname.new(@params['config.filename'] || ENV['CLIDERC']          || "#{clide_config_dir}/.cliderc")
-
-        @project_root = ClideConfig::find_project_root_quick_and_dirty
+        @project_root = ClideConfig.find_project_root_quick_and_dirty.realpath
         @params = {}
 
-        projectrc = [@project_root, cliderc].join '/'
-        if File.exists? projectrc
+        projectrc = @project_root + cliderc
+        if projectrc.exist? 
             conf = ParseConfig.new(projectrc)
-            @params = conf.params
+            conf.params.each { |k,v|
+                @params[k.to_sym] = Pathname.new v
+            }
         else
-            @params[:clide_conf_dir]          = clide_config_dir
-            @params[:clide_config]            = cliderc
-            @params[:pom_md5]                 = ENV['CLIDE_POM_MD5']           || "#{clide_config_dir}/pom.hsh"
-            @params[:effective_pom]           = ENV['CLIDE_EFFECTIVE_POM']     || "#{clide_config_dir}/epom.xml"
-            @params[:clide_maven_output_file] = ENV['CLIDE_MAVEN_OUTPUT_FILE'] || "#{clide_config_dir}/maven.out"
+            clide_conf_dir = (@project_root + clide_conf_dir).realdirpath
 
-            # The following are planned, but are not used
-            #@params[:classpath_file]          = ENV['CLIDE_CLASSPATH_FILE']    || "#{clide_config_dir}/classpath.txt"
-            #@params[:javafiles]               = ENV['CLIDE_JAVAFILES']         || "#{clide_config_dir}/java.src"
-            #@params[:testjavafiles]           = ENV['CLIDE_TESTJAVAFILES']     || "#{clide_config_dir}/java.test.src"
-            #@params[:clide_build_order]       = ENV['CLIDE_BUILD_ORDER']       || "#{clide_config_dir}/build.order"
-            #@params[:clide_compile_commands]  = ENV['CLIDE_COMPILE_COMMANDS']  || "#{clide_config_dir}/compile.sh"
-            #@params[:clide_compiler_output]   = ENV['CLIDE_COMPILER_OUTPUT']   || "#{clide_config_dir}/compiler.output"
+            @params[:project_root]   = @project_root
+            @params[:clide_conf_dir] = clide_conf_dir
+            @params[:cliderc]        = projectrc.realdirpath
 
-            Dir.mkdir @params[:clide_conf_dir] unless Dir.exist? @params[:clide_conf_dir]
-            File.open(@params[:clide_config], 'w+') { |rc|
+            Dir.mkdir clide_conf_dir unless clide_conf_dir.exist?
+            @params[:pom_md5]           = Pathname.new(ENV['CLIDE_POM_MD5']           || clide_conf_dir + "pom.md5").realdirpath
+            @params[:effective_pom]     = Pathname.new(ENV['CLIDE_EFFECTIVE_POM']     || clide_conf_dir + "epom.xml").realdirpath
+            @params[:maven_output_file] = Pathname.new(ENV['CLIDE_MAVEN_OUTPUT_FILE'] || clide_conf_dir + "maven.out").realdirpath
+            @params[:classpath_file]    = Pathname.new(ENV['CLIDE_CLASSPATH_FILE']    || clide_conf_dir + "classpath.txt").realdirpath
+            @params[:javafiles]         = Pathname.new(ENV['CLIDE_JAVAFILES']         || clide_conf_dir + "java.src").realdirpath
+            @params[:testjavafiles]     = Pathname.new(ENV['CLIDE_TESTJAVAFILES']     || clide_conf_dir + "java.test.src").realdirpath
+            @params[:build_order]       = Pathname.new(ENV['CLIDE_BUILD_ORDER']       || clide_conf_dir + "build.order").realdirpath
+            @params[:compile_commands]  = Pathname.new(ENV['CLIDE_COMPILE_COMMANDS']  || clide_conf_dir + "compile.sh").realdirpath
+            @params[:compiler_output]   = Pathname.new(ENV['CLIDE_COMPILER_OUTPUT']   || clide_conf_dir + "compiler.output").realdirpath
+            @params[:dependencies]      = Pathname.new(ENV['CLIDE_DEPENDENCIES']      || clide_conf_dir + "dependencies.yaml").realdirpath
+
+            File.open(@params[:cliderc], 'w+') { |rc|
                 conf = ParseConfig.new(rc)
                 @params.each { |k,v|
                     conf.add k, v
@@ -70,14 +70,11 @@ class ClideConfig
     #}}}
 
     def ClideConfig.find_project_root_quick_and_dirty(dir = Pathname::pwd)
-        candidate = search_up_for 'pom.xml', {start_dir: dir}
+      pomfname = 'pom.xml'
+      candidates = search_up_for pomfname, {start_dir: dir}
 
-        return dir if candidate.nil? and File.exists? 'pom.xml'
-        raise "dammit" if candidate.nil?  # this implies ../pom.xml doesn't exist
-
-        return File.dirname dir if !candidate.nil? && File.exists? "#{File.dirname(dir)}/pom.xml"
-        raise "this *is* quick and dirty"
+      raise "#{pomfname} count not be found!" if candidates.nil? || candidates.empty?
+      candidates.last
     end
 end
 #}}}
-
