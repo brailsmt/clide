@@ -5,13 +5,13 @@
 # contents:   A clide utility to parse a maven pom and provide useful information about a project.
 
 require 'nokogiri'
-require 'parseconfig'
 require 'pp'
 require 'digest'
-require 'yaml'
+require 'psych'
 require 'set'
 
 require_relative 'utilities'
+require_relative 'config'
 
 ##
 # Simple class for a single Dependency
@@ -42,7 +42,6 @@ end
 # Manage all things related to a maven pom.
 #{{{
 class Pom
-  @@conf = ClideConfig.instance
 
   attr_accessor :pom, :group_id, :project_id, :version, :is_parent
   attr_accessor :filename, :namespaces, :dependencies, :modules
@@ -50,10 +49,11 @@ class Pom
 
   def initialize(fname)
     return unless fname.exist?
+    conf = ClideConfig.instance
     @module_poms = []
     
     @filename     = fname
-    @project_root = @@conf[:project_root]
+    @project_root = conf[:project_root]
 
     @pom          = Nokogiri::XML(File.open(@filename, 'r'))
     @namespaces   = @pom.namespaces
@@ -66,7 +66,7 @@ class Pom
   end
 
   def init_dependencies
-    return unless ClideConfig.poms_have_been_updated? @@conf
+    return unless ClideConfig.instance.poms_have_been_updated?
     parent = @pom.xpath "//xmlns:project[xmlns:modules]", @namespaces
     projects = @pom.xpath "//xmlns:project/xmlns:modules/xmlns:module/text()", @namespaces
 
@@ -84,8 +84,8 @@ class Pom
       }
     }
 
-    @@conf[:dependencies].open('w+') { |file|
-      file.puts @dependencies.to_yaml 
+    ClideConfig.instance[:dependencies][:file].open('w+') { |file|
+      file.write Psych.dump @dependencies
     }
     @dependencies
   end
@@ -99,7 +99,7 @@ class Pom
   def pom_md5s
       md5s = []
       modules.each { |m|
-          mpom = @@conf[:project_root] + m + 'pom.xml'
+          mpom = ClideConfig.instance[:project_root] + m + 'pom.xml'
 
           md5s << "#{Digest::MD5.file mpom} #{mpom}"
       }

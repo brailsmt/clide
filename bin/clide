@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 # vim: fdm=marker
 
-require 'yaml'
 require 'optparse'
 require 'pp'
+require 'psych'
 
 require_relative '../lib/pom'
 
@@ -40,8 +40,9 @@ class Clide
   #{{{
   def update_dependencies
     # determine dependencies and store them
+    pp @conf[:dependencies]
     @conf[:dependencies][:file].open('w+') { |file|
-      file.puts pom.dependencies.to_yaml 
+      file.write Psych.dump @pom.dependencies
     }
   end
   #}}}
@@ -49,26 +50,29 @@ class Clide
   #{{{
   def generate_classpaths
     # generate the classpath for each module
-    classpaths = {}
-    pom.modules.each { |_module|
-      pom.dependencies[_module.text].each { |dep|
-        classpaths[_module] = @conf[:dependencies][:modules][dep].get_path_to_dep
+    @pom.modules.each { |_module|
+      @conf[:classpath][_module.text] = Set.new if @conf[:classpath][_module.text].nil?
+
+      @pom.dependencies[_module.text].each { |dep_coordinate|
+        @conf[:classpath][_module.text] << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
       }
     }
-    @conf[:classpath][:modules] = classpaths
-    @conf[:classpath][:file].open('w+') { |file| file.puts classpaths.to_yaml }
+    @conf[:classpath][:file].open('w+') { |file| 
+      file.write Psych.dump @conf[:classpath]
+    }
   end
   #}}}
 
   #{{{
   def load_dependencies
-    @conf[:dependencies] = YAML.load @conf[:dependencies][:file]
+    pp @conf
+    @conf[:dependencies][:deps] = Psych.load @conf[:dependencies][:file]
   end
   #}}}
 
   #{{{
   def load_classpaths
-      @conf[:classpath][:modules] = YAML.load @conf[:classpath][:file]
+      @conf[:classpath][:modules] = Psych.load @conf[:classpath][:file]
   end
   #}}}
 
@@ -79,12 +83,12 @@ class Clide
     # grab the project root pom
     root_pom = Pom.new @conf[:project_root] + "pom.xml"
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
-    pom = load_effective_pom @conf
+    @pom = load_effective_pom @conf
 
 
     # calculate the md5 hash of every pom and store it if needed
-    if ClideConfig.poms_have_been_updated? @conf
-      @conf[:pom_md5].open('w+') { |file| file.puts pom.pom_md5s }
+    if @conf.poms_have_been_updated?
+      @conf[:pom_md5].open('w+') { |file| file.puts @pom.pom_md5s }
       update_dependencies
       generate_classpaths
     else
@@ -99,8 +103,8 @@ class Clide
     puts "Unknown command:  #{args}" unless args == nil
     puts "Usage:  clide [options] [command [arguments]]"
     puts "  Options:"
-    puts "    -u        have source files been updated? exit code: 0 = yes, 1 = no"
-    puts "    -d        have dependencies been changed? exit code: 0 = yes, 1 = no"
+    puts "    -s        have source files been updated? exit code: 0 = yes, 1 = no"
+    puts "    -d        have dependencies been updated? exit code: 0 = yes, 1 = no"
     puts 
     puts "  All available commands have additional help, use 'clide <cmd> help'"
     puts "  Available Commands:"
@@ -123,11 +127,19 @@ class Clide
 
   #{{{
   def run(args)
-    OptionParser.new { |opts|
-      opts.on '-u' { |opt|
-        exit if 
+    opt_parser = OptionParser.new { |opts|
+      opts.on('-s', '--updated-sources', 'have source files been updated? exit code: 0 = yes, 1 = no') { |opt|
+        puts "Not Implemented.  -s will exit with a status of 0 if sources have changed, non-zero otherwise"
+        exit 1
+      }
+
+      opts.on('-d', '--updated-dependencies', 'have dependencies been changed? exit code: 0 = yes, 1 = no') { |opt|
+        puts "Not Implemented.  -d will exit with a status of 0 is dependencies have changed, non-zero otherwise"
+        exit 1
       }
     }
+    opt_parser.parse!
+
     command = args.shift
     puts command
 

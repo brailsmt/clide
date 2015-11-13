@@ -4,12 +4,17 @@
 # created:    2015-08-23 23:22:09 -0500
 # contents:   A module for dealing with clide configuration
 
-require 'parseconfig'
 require 'singleton'
 require 'pathname'
+require 'psych'
 
 require_relative 'utilities'
-require_relative 'pom'
+
+class Pathname
+    def external_encoding
+        Encoding::UTF_8
+    end
+end
 
 #{{{
 class ClideConfig
@@ -30,16 +35,17 @@ class ClideConfig
 
         projectrc = @project_root + cliderc
         if projectrc.exist? 
-            conf = ParseConfig.new(projectrc)
-            conf.params.each { |k,v|
-                @params[k.to_sym] = Pathname.new v
-            }
+            conf = Psych.load_file projectrc
+            @params = (Psych.load conf[:dependencies][:file])
         else
             clide_conf_dir = (@project_root + clide_conf_dir).realdirpath
 
             @params[:project_root]   = @project_root
             @params[:clide_conf_dir] = clide_conf_dir
             @params[:cliderc]        = projectrc.realdirpath
+            @params[:classpath]      = {}
+            @params[:dependencies]   = {}
+
 
             Dir.mkdir clide_conf_dir unless clide_conf_dir.exist?
             @params[:pom_md5]             = Pathname.new(ENV['CLIDE_POM_MD5']            || clide_conf_dir + "pom.md5").realdirpath
@@ -50,17 +56,13 @@ class ClideConfig
             @params[:build_order]         = Pathname.new(ENV['CLIDE_BUILD_ORDER']        || clide_conf_dir + "build.order").realdirpath
             @params[:compile_commands]    = Pathname.new(ENV['CLIDE_COMPILE_COMMANDS']   || clide_conf_dir + "compile.sh").realdirpath
             @params[:compiler_output]     = Pathname.new(ENV['CLIDE_COMPILER_OUTPUT']    || clide_conf_dir + "compiler.output").realdirpath
-            @params[:dep_classes_dir]     = Pathname.new(ENV['CLIDE_DEPENDENCY_CLASSES'] || clide_conf_dir + "dep_classes").realpath
+            @params[:dep_classes_dir]     = Pathname.new(ENV['CLIDE_DEPENDENCY_CLASSES'] || clide_conf_dir + "dep_classes").realdirpath
 
             @params[:classpath][:file]    = Pathname.new(ENV['CLIDE_CLASSPATH_FILE']     || clide_conf_dir + "classpath.txt").realdirpath
             @params[:dependencies][:file] = Pathname.new(ENV['CLIDE_DEPENDENCIES']       || clide_conf_dir + "dependencies.yaml").realdirpath
 
-            File.open(@params[:cliderc], 'w+') { |rc|
-                conf = ParseConfig.new(rc)
-                @params.each { |k,v|
-                    conf.add k, v
-                }
-                conf.write rc
+            File.open(@params[:cliderc], 'w+') { |rc_file|
+                rc_file.write Psych.dump @params
             }
         end
     end
@@ -92,13 +94,6 @@ class ClideConfig
             end
         }
         false
-    end
-
-    def load_effective_pom
-        if @params[:effective_pom].exists?
-            File.open(@params[:pom_md5], 'r').each_line { |line|
-        end
-        end
     end
 end
 #}}}
