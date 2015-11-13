@@ -1,0 +1,5 @@
+#!/bin/bash
+
+source_dirs=$(find . -type d -name main)
+
+find $source_dirs -name '*.java' | /usr/local/bin/ctags --languages=java --extra=+fq --fields=+afimnsS --java-kinds=cefgilmp -L-

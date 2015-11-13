@@ -12,7 +12,6 @@ require 'yaml'
 require 'set'
 
 require_relative 'utilities'
-require_relative 'config'
 
 ##
 # Simple class for a single Dependency
@@ -42,14 +41,16 @@ end
 ##
 # Manage all things related to a maven pom.
 #{{{
-class POM
+class Pom
   @@conf = ClideConfig.instance
 
   attr_accessor :pom, :group_id, :project_id, :version, :is_parent
-  attr_accessor :project_root, :filename, :namespaces, :dependencies, :modules
+  attr_accessor :filename, :namespaces, :dependencies, :modules
+  attr_accessor :module_poms
 
   def initialize(fname)
     return unless fname.exist?
+    @module_poms = []
     
     @filename     = fname
     @project_root = @@conf[:project_root]
@@ -65,13 +66,15 @@ class POM
   end
 
   def init_dependencies
+    return unless ClideConfig.poms_have_been_updated? @@conf
     parent = @pom.xpath "//xmlns:project[xmlns:modules]", @namespaces
-    projects = @pom.xpath "//xmlns:project[not(xmlns:modules)]", @namespaces
+    projects = @pom.xpath "//xmlns:project/xmlns:modules/xmlns:module/text()", @namespaces
 
+    @dependencies = {}
     @dependencies[:all] = {}
 
     projects.each { |prj|
-      project_name = prj.xpath('./xmlns:name/text()', prj.namespaces).text
+      project_name = prj.text
       @dependencies[project_name] = Set.new
 
       prj.xpath("//xmlns:dependencies/xmlns:dependency", prj.namespaces).each { |dep|
@@ -79,6 +82,10 @@ class POM
         @dependencies[:all][dependency.coordinate] = dependency
         @dependencies[project_name] << dependency.coordinate
       }
+    }
+
+    @@conf[:dependencies].open('w+') { |file|
+      file.puts @dependencies.to_yaml 
     }
     @dependencies
   end
@@ -89,40 +96,22 @@ class POM
     !parent.empty?
   end
 
-  def update_md5
-      puts @@conf[:pom_md5]
-      File.open(@@conf[:pom_md5], 'w+') { |file|
-          modules.each { |m|
-              mpom = @@conf[:project_root] + m + 'pom.xml'
-              puts "#{Digest::MD5.file mpom} #{mpom}"
+  def pom_md5s
+      md5s = []
+      modules.each { |m|
+          mpom = @@conf[:project_root] + m + 'pom.xml'
 
-              file.puts "#{Digest::MD5.file mpom} #{mpom}"
-          }
+          md5s << "#{Digest::MD5.file mpom} #{mpom}"
       }
+      md5s
   end
 
-  def poms_have_been_updated?
-      return true unless @@conf[:pom_md5].exist?
-
-      File.open(@@conf[:pom_md5], 'r').each_line { |line|
-          (previous_md5, pom_fname) = line.split %r{\s+}
-          (current_md5, ignored)  = Digest::MD5.file pom_fname
-
-          if current_md5 != previous_md5
-              return true
-          end
-      }
-      false
-  end
-
-  def epom_fname
-    ".clide/epom.xml"
-  end
-
-  private :epom_fname, :init_dependencies, :has_parent?
+  private :init_dependencies, :has_parent?
 end
 #}}}
 
+##
+# Load or create the effective pom
 #{{{
 def load_effective_pom(conf = ClideConfig.instance)
     epomfname = conf[:effective_pom]
@@ -131,14 +120,13 @@ def load_effective_pom(conf = ClideConfig.instance)
         `(cd #{conf[:project_root]}; mvn help:effective-pom -Doutput=#{epomfname})`
     end
 
-    POM.new epomfname
+    Pom.new epomfname
 end
 #}}}
 
 conf = ClideConfig.instance
 epom = load_effective_pom
-epom.poms_have_been_updated?
 
-conf[:dependencies].open('w+') { |f|
-    f.puts epom.dependencies.to_yaml
-}
+#conf[:dependencies].open('w+') { |f|
+    #f.puts epom.dependencies.to_yaml
+#}

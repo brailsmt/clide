@@ -1,73 +1,154 @@
 #!/usr/bin/env ruby
 # vim: fdm=marker
 
+require 'yaml'
 require 'optparse'
 require 'pp'
 
 require_relative '../lib/pom'
 
-# Top level command to manage a java project from the command line.
-## This config stuff is great, but I need functionality before configuration.
-## BEGIN CONFIG
-#
-#require_relative '../lib/clide_opts'
-#require_relative '../lib/cliderc'
-#
-#OPTS = get_clide_options
-#conf = nil
-#begin
-#  conf = ClideConfig.new OPTS, ClideConfig::find_project_root
-#rescue Exception => e
-#  $stderr.puts e.backtrace
-#  exit unless ARGV[0] == 'init'
-#end
-#
-###
-## This is the first command that needs to run, so it cannot rely on configuration.
-#def do_init
-#  conf = ClideConfig.new OPTS, Dir.pwd
-#  conf.save
-#end
-## END CONFIG
-
-def grab_imports(pom, args = nil)
-  pp pom.dependencies
-end
-
-def build_classpath(pom_fname, project)
-  pom = POM.new pom_fname
-  classpath = []
-  deps[project].each { |dep|
-    classpath << dep.get_path_to_dep
-  }
-  classpath.join ':'
-end
+# Top level command to manage a maven java project from the command line.
 
 #{{{
-def register_command(name, fn)
-  if $commands.has_key? name
-    puts "A command for #{name} already exists!  Aborting!"
-    puts "If you really want to override the #{name} command, use register_command!()."
-    false
-  else
-    $commands[name] = fn
-    true
+class Clide
+  
+  def initialize
+    @conf = ClideConfig.instance
   end
+
+  #{{{
+  def register_command(name, fn)
+    if @commands.has_key? name
+      puts "A command for #{name} already exists!  Aborting!"
+      puts "If you really want to override the #{name} command, use register_command!()."
+      false
+    else
+      $commands[name] = fn
+      true
+    end
+  end
+  #}}}
+
+  ##
+  # Generates import statements for all the provided keywords
+  #{{{
+  def gen_imports(keywords)
+    puts "Not implemented"
+  end
+  #}}}
+
+  #{{{
+  def update_dependencies
+    # determine dependencies and store them
+    @conf[:dependencies][:file].open('w+') { |file|
+      file.puts pom.dependencies.to_yaml 
+    }
+  end
+  #}}}
+
+  #{{{
+  def generate_classpaths
+    # generate the classpath for each module
+    classpaths = {}
+    pom.modules.each { |_module|
+      pom.dependencies[_module.text].each { |dep|
+        classpaths[_module] = @conf[:dependencies][:modules][dep].get_path_to_dep
+      }
+    }
+    @conf[:classpath][:modules] = classpaths
+    @conf[:classpath][:file].open('w+') { |file| file.puts classpaths.to_yaml }
+  end
+  #}}}
+
+  #{{{
+  def load_dependencies
+    @conf[:dependencies] = YAML.load @conf[:dependencies][:file]
+  end
+  #}}}
+
+  #{{{
+  def load_classpaths
+      @conf[:classpath][:modules] = YAML.load @conf[:classpath][:file]
+  end
+  #}}}
+
+  ##
+  # Initialize clide by parsing the pom and storing the data in the .clide directory
+  #{{{
+  def init
+    # grab the project root pom
+    root_pom = Pom.new @conf[:project_root] + "pom.xml"
+    # generate and load the effective pom and extract data from it so we don't need to parse it everytime
+    pom = load_effective_pom @conf
+
+
+    # calculate the md5 hash of every pom and store it if needed
+    if ClideConfig.poms_have_been_updated? @conf
+      @conf[:pom_md5].open('w+') { |file| file.puts pom.pom_md5s }
+      update_dependencies
+      generate_classpaths
+    else
+      load_dependencies
+      load_classpaths
+    end
+  end
+  #}}}
+
+  #{{{
+  def help(args = nil)
+    puts "Unknown command:  #{args}" unless args == nil
+    puts "Usage:  clide [options] [command [arguments]]"
+    puts "  Options:"
+    puts "    -u        have source files been updated? exit code: 0 = yes, 1 = no"
+    puts "    -d        have dependencies been changed? exit code: 0 = yes, 1 = no"
+    puts 
+    puts "  All available commands have additional help, use 'clide <cmd> help'"
+    puts "  Available Commands:"
+    puts "    help:     display this message"
+    puts "    init:     initialize project"
+    puts "    imports:  list imports"
+    puts "    deps:     list dependencies"
+    puts "    update:   update/reinitialize project"
+  end
+  #}}}
+
+  #{{{
+  def list_deps(prj_name = Pathname::pwd.basename)
+    puts prj_name
+    puts 
+  end
+  #}}}
+
+
+
+  #{{{
+  def run(args)
+    OptionParser.new { |opts|
+      opts.on '-u' { |opt|
+        exit if 
+      }
+    }
+    command = args.shift
+    puts command
+
+    case command
+    when 'init'
+      init
+    when 'imports', 'imp'
+      gen_imports args
+    when 'deps'
+      list_deps
+    when 'update', 'up', 'refresh'
+      init
+    when 'help'
+      help
+    else
+      help command
+    end
+  end
+  #}}}
 end
 #}}}
 
-def main
-  command = ARGV.shift
 
-  case command
-  when 'jimp'
-    grab_imports POM.find_parent_pom
-  when 'gencp'
-    build_classpath ARGV[0], ARGV[1]
-  else
-    puts "Not implemented yet!"
-  end
-end
-
-
-main 
+Clide.new.run(ARGV)
