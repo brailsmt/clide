@@ -35,8 +35,7 @@ class ClideConfig
 
         projectrc = @project_root + cliderc
         if projectrc.exist? 
-            conf = Psych.load_file projectrc
-            @params = (Psych.load conf[:dependencies][:file])
+            @params = Psych.load_file projectrc
         else
             clide_conf_dir = (@project_root + clide_conf_dir).realdirpath
 

@@ -38,6 +38,14 @@ class Dependency
 end
 #}}}
 
+class ProjectModule
+    attr_reader :name, :src_dir, :test_src_dir
+
+    def initialize(name)
+        @name = name
+    end
+end
+
 ##
 # Manage all things related to a maven pom.
 #{{{
@@ -60,6 +68,9 @@ class Pom
     @namespaces   = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' } if @namespaces.empty?
     @is_parent    = ! has_parent?
     @modules      = @pom.xpath "//xmlns:modules/xmlns:module/text()", @namespaces
+#    @pom.xpath("//xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
+#        pp @pom.xpath "//xmlns:project[xmlns:artifactId = #{mname}]", @namespaces
+#    }
 
     @dependencies = {}
     init_dependencies
@@ -124,8 +135,7 @@ def load_effective_pom(conf = ClideConfig.instance)
 end
 #}}}
 
-conf = ClideConfig.instance
-epom = load_effective_pom
+#epom = load_effective_pom
 
 #conf[:dependencies].open('w+') { |f|
     #f.puts epom.dependencies.to_yaml

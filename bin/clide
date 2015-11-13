@@ -11,6 +11,7 @@ require_relative '../lib/pom'
 
 #{{{
 class Clide
+  attr_accessor :conf
   
   def initialize
     @conf = ClideConfig.instance
@@ -40,7 +41,6 @@ class Clide
   #{{{
   def update_dependencies
     # determine dependencies and store them
-    pp @conf[:dependencies]
     @conf[:dependencies][:file].open('w+') { |file|
       file.write Psych.dump @pom.dependencies
     }
@@ -65,23 +65,28 @@ class Clide
 
   #{{{
   def load_dependencies
-    pp @conf
-    @conf[:dependencies][:deps] = Psych.load @conf[:dependencies][:file]
+    @conf[:dependencies][:deps] = Psych.load_file @conf[:dependencies][:file]
   end
   #}}}
 
   #{{{
   def load_classpaths
-      @conf[:classpath][:modules] = Psych.load @conf[:classpath][:file]
+      @conf[:classpath][:modules] = Psych.load_file @conf[:classpath][:file]
   end
   #}}}
+
+  def find_all_sources
+  end
+
+  def find_all_test_sources
+  end
 
   ##
   # Initialize clide by parsing the pom and storing the data in the .clide directory
   #{{{
   def init
     # grab the project root pom
-    root_pom = Pom.new @conf[:project_root] + "pom.xml"
+    root_pom = Pom.new(@conf[:project_root] + "pom.xml")
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
     @pom = load_effective_pom @conf
 
@@ -99,7 +104,7 @@ class Clide
   #}}}
 
   #{{{
-  def help(args = nil)
+  def Clide.help(args = nil)
     puts "Unknown command:  #{args}" unless args == nil
     puts "Usage:  clide [options] [command [arguments]]"
     puts "  Options:"
@@ -123,6 +128,16 @@ class Clide
   end
   #}}}
 
+  #{{{
+  def compile
+    # did any files change?
+    #   no: exit
+    # did deps change?
+    #   yes: update_dependencies
+    # for each module with file changes
+    #   compile changed files
+  end
+  #}}}
 
 
   #{{{
@@ -141,21 +156,20 @@ class Clide
     opt_parser.parse!
 
     command = args.shift
-    puts command
 
     case command
-    when 'init'
+    when 'init', 'update', 'up', 'refresh'
       init
     when 'imports', 'imp'
-      gen_imports args
+      #gen_imports args
+      raise "Not implemented!"
     when 'deps'
-      list_deps
-    when 'update', 'up', 'refresh'
-      init
+      #list_deps
+      raise "Not implemented!"
     when 'help'
-      help
+      Clide.help
     else
-      help command
+      Clide.help command
     end
   end
   #}}}
@@ -163,4 +177,10 @@ end
 #}}}
 
 
-Clide.new.run(ARGV)
+begin
+  Clide.new.run(ARGV)
+rescue
+  puts $!
+  puts $!.backtrace
+  Clide.help
+end
