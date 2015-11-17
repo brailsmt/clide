@@ -50,7 +50,7 @@ class Clide
   #{{{
   def generate_classpaths
     # generate the classpath for each module
-    @pom.modules.each { |_module|
+    @pom.modules.each_key { |_module|
       @conf[:classpath][_module.text] = Set.new if @conf[:classpath][_module.text].nil?
 
       @pom.dependencies[_module.text].each { |dep_coordinate|
@@ -139,6 +139,12 @@ class Clide
   end
   #}}}
 
+  def clean
+    conf = ClideConfig.instance
+    Pathname::glob(conf[:clide_conf_dir] + '*').each { |file| file.delete }
+    conf[:clide_conf_dir].rmdir
+    conf[:cliderc].delete
+  end
 
   #{{{
   def run(args)
@@ -160,6 +166,8 @@ class Clide
     case command
     when 'init', 'update', 'up', 'refresh'
       init
+    when 'clean'
+      clean
     when 'imports', 'imp'
       #gen_imports args
       raise "Not implemented!"

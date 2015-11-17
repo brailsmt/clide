@@ -25,7 +25,7 @@ class Dependency
     @artifactId = pom_dep_node.xpath('./xmlns:artifactId/text()', ns).text.strip
     @version    = pom_dep_node.xpath('./xmlns:version/text()', ns).text.strip
     @scope      = pom_dep_node.xpath('./xmlns:scope/text()', ns).text.strip
-    @scope = 'compile' if @scope.empty?
+    @scope      = 'compile' if @scope.empty?
     @coordinate = "#{@groupId}:#{@artifactId}:#{@version}"
 
     grp_path = @groupId.gsub /\./, "/"
@@ -41,8 +41,17 @@ end
 class ProjectModule
     attr_reader :name, :src_dir, :test_src_dir
 
-    def initialize(name)
-        @name = name
+    def initialize(name, modpom, namespaces)
+        @namespaces   = namespaces
+        @name         = name
+        pp modpom.xpath("/xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:sourceDirectory/text()", @namespaces).text
+        @src_dir      = Pathname.new(modpom.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:sourceDirectory/text()", @namespaces).text)
+        @test_src_dir = Pathname.new(modpom.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:testSourceDirectory/text()", @namespaces).text)
+
+        pp @src_dir
+        pp @src_dir + '**' + '*.java'
+        @all_sources      = Pathname::glob[@src_dir + '**' + '*.java']
+        @all_test_sources = Pathname::glob[@test_src_dir + '**' + '*.java']
     end
 end
 
@@ -67,11 +76,12 @@ class Pom
     @namespaces   = @pom.namespaces
     @namespaces   = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' } if @namespaces.empty?
     @is_parent    = ! has_parent?
-    @modules      = @pom.xpath "//xmlns:modules/xmlns:module/text()", @namespaces
-#    @pom.xpath("//xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
-#        pp @pom.xpath "//xmlns:project[xmlns:artifactId = #{mname}]", @namespaces
-#    }
+    @modules      = {}
+    @pom.xpath("//xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
+      @modules[mname] = ProjectModule.new(mname, @pom.xpath("//xmlns:project[xmlns:artifactId = \"#{mname}\"]", @namespaces), @namespaces)
+    }
 
+    pp @modules
     @dependencies = {}
     init_dependencies
   end
@@ -98,6 +108,7 @@ class Pom
     ClideConfig.instance[:dependencies][:file].open('w+') { |file|
       file.write Psych.dump @dependencies
     }
+
     @dependencies
   end
 
@@ -109,7 +120,7 @@ class Pom
 
   def pom_md5s
       md5s = []
-      modules.each { |m|
+      modules.each_key { |m|
           mpom = ClideConfig.instance[:project_root] + m + 'pom.xml'
 
           md5s << "#{Digest::MD5.file mpom} #{mpom}"
