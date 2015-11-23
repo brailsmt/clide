@@ -1,0 +1,6 @@
+#!/bin/bash
+
+source_dirs=$(find . -type d -name main -o -name test)
+
+find $source_dirs -name '*.java' > cscope.files
+cscope -bq

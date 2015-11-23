@@ -51,10 +51,10 @@ class Clide
   def generate_classpaths
     # generate the classpath for each module
     @pom.modules.each_key { |_module|
-      @conf[:classpath][_module.text] = Set.new if @conf[:classpath][_module.text].nil?
+      @conf[:classpath][_module] = Set.new if @conf[:classpath][_module].nil?
 
-      @pom.dependencies[_module.text].each { |dep_coordinate|
-        @conf[:classpath][_module.text] << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
+      @pom.dependencies[_module].each { |dep_coordinate|
+        @conf[:classpath][_module] << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
       }
     }
     @conf[:classpath][:file].open('w+') { |file| 
@@ -75,18 +75,12 @@ class Clide
   end
   #}}}
 
-  def find_all_sources
-  end
-
-  def find_all_test_sources
-  end
-
   ##
   # Initialize clide by parsing the pom and storing the data in the .clide directory
   #{{{
   def init
     # grab the project root pom
-    root_pom = Pom.new(@conf[:project_root] + "pom.xml")
+    root_pom = Project.new(@conf[:project_root] + "pom.xml")
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
     @pom = load_effective_pom @conf
 

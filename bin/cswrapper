@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# This is a wrapper around cscope that allows it to be used more easily from the command line
+
+cscope_prg=$(which cscope)
+
+# The non-intuitive cscope search options are:
+#  0 - Find this C symbol:
+#  1 - Find this global definition:
+#  2 - Find functions called by this function:
+#  3 - Find functions calling this function:
+#  4 - Find this text string:
+#  5 - Change this text string:
+#  6 - Find this egrep pattern:
+#  7 - Find this file:
+#  8 - Find files #including this file:
+#  9 - Find assignments to this symbol:
+#  
+# input args are
+#  - s[ymbol]         Search for a symbol                                 (cscope 0)
+#  - r[egex]          Search for a regex                                  (cscope 6)
+#  - d[ef]            Search for a global definition                      (cscope 1)
+#  - ci               Search all functions that call into this one        (cscope 3)
+#  - cf               Search all functions that are called from this one  (cscope 2)
+#  - t[ext]           Search for a specific string                        (cscope 5)
+#  - co[nsumers]      Search all file importing this one                  (cscope 8)
+#  - a[ssignemnts]    Search all placces that this symbol is assigned     (cscope 8)
+
+opt=$1
+shift
+
+if [[ $opt == 's' ]]; then
+    opt=0
+else
+    exit 1
+fi
+
+CSCOPE_CMD_OPTS="-L -d${opt}"
+echo $cscope_prg $CSCOPE_CMD_OPTS $*
+$cscope_prg $CSCOPE_CMD_OPTS $*

@@ -60,6 +60,9 @@ class ClideConfig
             @params[:classpath][:file]    = Pathname.new(ENV['CLIDE_CLASSPATH_FILE']     || clide_conf_dir + "classpath.txt").realdirpath
             @params[:dependencies][:file] = Pathname.new(ENV['CLIDE_DEPENDENCIES']       || clide_conf_dir + "dependencies.yaml").realdirpath
 
+            @params[:source_md5s]         = Pathname.new(ENV['CLIDE_SOURCE_MD5S']        || clide_conf_dir + "source.md5").realdirpath
+            @params[:test_source_md5s]    = Pathname.new(ENV['CLIDE_TEST_SOURCE_MD5S']   || clide_conf_dir + "test_source.md5").realdirpath
+
             File.open(@params[:cliderc], 'w+') { |rc_file|
                 rc_file.write Psych.dump @params
             }
