@@ -5,26 +5,40 @@ require 'optparse'
 require 'pp'
 require 'psych'
 
-require_relative '../lib/pom'
+require_relative '../lib/project'
 
 # Top level command to manage a maven java project from the command line.
 
 #{{{
 class Clide
-  attr_accessor :conf
+  attr_accessor :conf, :root_pom
   
   def initialize
     @conf = ClideConfig.instance
+    if @conf[:effective_pom].exist?
+      @pom = load_effective_pom(self)
+    end
+
+    @plugins = {}
+    @commands = {}
+  end
+
+  def Clide.is_command_registered?(cmdname)
+    @commands.has_key? cmdname
   end
 
   #{{{
-  def register_command(name, fn)
-    if @commands.has_key? name
-      puts "A command for #{name} already exists!  Aborting!"
-      puts "If you really want to override the #{name} command, use register_command!()."
+  def register_plugin(plugin)
+    new_plugin = plugin.new @conf
+    if @plugins.has_key? new_plugin.name
+      puts "A plugin for #{new_plugin.name} already exists!  Aborting!"
       false
     else
-      $commands[name] = fn
+      @plugins[new_plugin.name] = new_plugin
+
+      new_plugin.commands.each { |cmd|
+        @commands[cmd] = new_plugin
+      }
       true
     end
   end
@@ -50,11 +64,12 @@ class Clide
   #{{{
   def generate_classpaths
     # generate the classpath for each module
-    @pom.modules.each_key { |_module|
-      @conf[:classpath][_module] = Set.new if @conf[:classpath][_module].nil?
+    @pom.modules.each_key { |module_key|
+      @conf[:classpath] = Hash.new if @conf[:classpath].nil?
+      @conf[:classpath][module_key] = Set.new if @conf[:classpath][module_key].nil?
 
-      @pom.dependencies[_module].each { |dep_coordinate|
-        @conf[:classpath][_module] << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
+      @pom.dependencies[module_key].each { |dep_coordinate|
+        @conf[:classpath][module_key] << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
       }
     }
     @conf[:classpath][:file].open('w+') { |file| 
@@ -65,34 +80,50 @@ class Clide
 
   #{{{
   def load_dependencies
-    @conf[:dependencies][:deps] = Psych.load_file @conf[:dependencies][:file]
+    if @conf[:dependencies][:file].exist?
+      @conf[:dependencies][:deps] = Psych.load_file @conf[:dependencies][:file]
+    else
+      update_dependencies
+    end
   end
   #}}}
 
   #{{{
   def load_classpaths
+    if @conf[:classpath][:file].exist?
       @conf[:classpath][:modules] = Psych.load_file @conf[:classpath][:file]
+    else
+      generate_classpaths
+    end
   end
   #}}}
+
+  def get_classpath(mod)
+    @conf[:classpath][:modules][@pom.artifactId_to_key mod.first].to_a
+  end
 
   ##
   # Initialize clide by parsing the pom and storing the data in the .clide directory
   #{{{
   def init
     # grab the project root pom
-    root_pom = Project.new(@conf[:project_root] + "pom.xml")
+    root_pom = Project.new(@conf[:project_root] + "pom.xml", self)
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
-    @pom = load_effective_pom @conf
-
+    @pom = load_effective_pom self
 
     # calculate the md5 hash of every pom and store it if needed
     if @conf.poms_have_been_updated?
-      @conf[:pom_md5].open('w+') { |file| file.puts @pom.pom_md5s }
+      # todo: get the updated pom...
+      @conf[:pom_md5].open('w+') { |file| file.puts @pom.get_pom_md5s }
       update_dependencies
       generate_classpaths
     else
       load_dependencies
       load_classpaths
+    end
+
+    unless @conf[:source_md5s].exist?
+      @pom.dump_source_md5s
     end
   end
   #}}}
@@ -112,6 +143,10 @@ class Clide
     puts "    imports:  list imports"
     puts "    deps:     list dependencies"
     puts "    update:   update/reinitialize project"
+    puts ""
+#    @commands.each { |name, cmd|
+#      puts "    #{cmd[:name]}:   #{cmd[:description]}"
+#    }
   end
   #}}}
 
@@ -133,12 +168,14 @@ class Clide
   end
   #}}}
 
+  #{{{
   def clean
     conf = ClideConfig.instance
     Pathname::glob(conf[:clide_conf_dir] + '*').each { |file| file.delete }
     conf[:clide_conf_dir].rmdir
     conf[:cliderc].delete
   end
+  #}}}
 
   #{{{
   def run(args)
@@ -171,7 +208,12 @@ class Clide
     when 'help'
       Clide.help
     else
-      Clide.help command
+      if @plugins.has_key? command
+        args.shift
+        @plugins[command].run self, args
+      else
+        Clide.help command
+      end
     end
   end
   #}}}
@@ -179,8 +221,34 @@ end
 #}}}
 
 
+#{{{
+def load_plugins(clide)
+  conf = clide.conf
+  conf[:plugins] = {}
+  unless conf[:plugin_directories].nil?
+    conf[:plugin_directories].each { |dir|
+      allmodules = Module.constants
+      Dir[dir.realdirpath + "*.rb"].each { |plugin|
+        require "#{plugin}"
+      }
+
+      # register all new modules
+      (Module.constants - allmodules).each { |mod_constant|
+        mod = (Module.const_get mod_constant)
+        next unless mod::respond_to? :register
+        mod::register(clide)
+      }
+    }
+  end
+end
+#}}}
+
 begin
-  Clide.new.run(ARGV)
+  clide = Clide.new
+
+  load_plugins clide
+
+  clide.run(ARGV)
 rescue
   puts $!
   puts $!.backtrace

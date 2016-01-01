@@ -17,24 +17,24 @@ require_relative 'config'
 # Simple class for a single Dependency
 #{{{
 class Dependency
-  attr_accessor :groupId, :artifactId, :version, :scope, :m2_relative_path, :coordinate
+    attr_accessor :groupId, :artifactId, :version, :scope, :m2_relative_path, :coordinate
 
-  def initialize(pom_dep_node)
-    ns = pom_dep_node.namespaces
-    @groupId    = pom_dep_node.xpath('./xmlns:groupId/text()', ns).text.strip
-    @artifactId = pom_dep_node.xpath('./xmlns:artifactId/text()', ns).text.strip
-    @version    = pom_dep_node.xpath('./xmlns:version/text()', ns).text.strip
-    @scope      = pom_dep_node.xpath('./xmlns:scope/text()', ns).text.strip
-    @scope      = 'compile' if @scope.empty?
-    @coordinate = "#{@groupId}:#{@artifactId}:#{@version}"
+    def initialize(pom_dep_node)
+        ns = pom_dep_node.namespaces
+        @groupId    = pom_dep_node.xpath('./xmlns:groupId/text()', ns).text.strip
+        @artifactId = pom_dep_node.xpath('./xmlns:artifactId/text()', ns).text.strip
+        @version    = pom_dep_node.xpath('./xmlns:version/text()', ns).text.strip
+        @scope      = pom_dep_node.xpath('./xmlns:scope/text()', ns).text.strip
+        @scope      = 'compile' if @scope.empty?
+        @coordinate = "#{@groupId}:#{@artifactId}:#{@version}"
 
-    grp_path = @groupId.gsub /\./, "/"
-    @m2_relative_path = "#{grp_path}/#{@artifactId}/#{@version}"
-  end
+        grp_path = @groupId.gsub /\./, "/"
+        @m2_relative_path = "#{grp_path}/#{@artifactId}/#{@version}"
+    end
 
-  def get_path_to_dep(m2repo = "#{ENV['HOME']}/.m2/repository")
-    "#{m2repo}/#{@m2_relative_path}/#{@artifactId}-#{@version}.jar"
-  end
+    def get_path_to_dep(m2repo = "#{ENV['HOME']}/.m2/repository")
+        "#{m2repo}/#{@m2_relative_path}/#{@artifactId}-#{@version}.jar"
+    end
 end
 #}}}
 
@@ -50,6 +50,7 @@ class SourceFile
     end
 
     def is_out_of_date?
+        src_md5s = Psych.load_file @conf[:source_md5s]
         new_md5 = Digest::MD5.file @filename
         if new_md5 == @md5
             false
@@ -66,13 +67,22 @@ class SourceFile
 end
 #}}}
 
+module ProjectFunctions
+    def find_sources(dir, glob) 
+        Pathname::glob(dir + glob).collect { |src| SourceFile.new src }
+    end
+end
+
 #{{{
 class ModuleProject
-    attr_reader :name, :src_dirs, :sources
+    include ProjectFunctions
+    attr_reader :name, :src_dirs, :sources, :pom_src
 
-    def initialize(name, modpom, namespaces)
-        @namespaces   = namespaces
-        @name         = name
+    def initialize(name, modpom, namespaces, clide = nil)
+        @conf       = ClideConfig.instance
+        @namespaces = namespaces
+        @name       = name
+        @pom_src    = SourceFile.new @conf[:project_root] + name + "pom.xml"
 
         @src_dirs = {
             :main => Pathname.new(modpom.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:sourceDirectory/text()", @namespaces).text),
@@ -81,8 +91,8 @@ class ModuleProject
 
         src_glob = "**/*.java"
         @sources = {
-          :main => Pathname::glob(@src_dirs[:main] + src_glob).collect { |src| SourceFile.new src },
-          :test => Pathname::glob(@src_dirs[:test] + src_glob).collect { |src| SourceFile.new src }
+            :main => find_sources(@src_dirs[:main], src_glob),
+            :test => find_sources(@src_dirs[:test], src_glob),
         }
     end
 end
@@ -92,129 +102,131 @@ end
 # Object to represent all useful information from a maven pom.
 #{{{
 class Project
+    include ProjectFunctions
 
-  attr_accessor :pom, :group_id, :project_id, :version, :is_parent
-  attr_accessor :filename, :namespaces, :dependencies, :modules
-  attr_accessor :module_poms
+    attr_accessor :group_id, :project_id, :version, :namespaces, :dependencies
+    attr_accessor :modules, :sources, :root_pom_src
 
-  def initialize(fname)
-    return unless fname.exist?
-    conf = ClideConfig.instance
-    @module_poms = []
-    
-    @filename     = fname
-    @project_root = conf[:project_root]
+    def initialize(fname, clide = nil)
+      @clide = clide
+      return unless fname.exist?
+      @conf = ClideConfig.instance
+      @module_poms = []
 
-    @pom          = Nokogiri::XML(File.open(@filename, 'r'))
-    @namespaces   = @pom.namespaces
-    @namespaces   = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' } if @namespaces.empty?
-    @is_parent    = ! has_parent?
-    @modules      = {}
-    @pom.xpath("//xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
+      @epom_fname   = fname
+      @project_root = @conf[:project_root]
+      @root_pom_src = SourceFile.new(@project_root + "pom.xml")
+
+      @epom_xml     = Nokogiri::XML(File.open(@epom_fname, 'r'))
+      @namespaces   = @epom_xml.namespaces
+      @namespaces   = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' } if @namespaces.empty?
+      @modules      = {}
+      @epom_xml.xpath("//xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
         modsym = artifactId_to_key mname.text
-        @modules[modsym] = ModuleProject.new(mname.text, @pom.xpath("//xmlns:project[xmlns:artifactId = \"#{mname}\"]", @namespaces), @namespaces)
-    }
-
-    # This will need to be changed in the future for projects which have both modules and src/ directories.
-    @sources = nil
-    @dependencies = init_dependencies
-  end
-
-  def get_all_sources
-      all_sources = { :main => [], :test => [] }
-
-      @modules.each { |mname,mod|
-          all_sources[:main] += mod.sources[:main]
-          all_sources[:test] += mod.sources[:test]
+        @modules[modsym] = ModuleProject.new(mname.text, @epom_xml.xpath("//xmlns:project[xmlns:artifactId = \"#{mname}\"]", @namespaces), @namespaces, @clide)
       }
-  end
+      @dependencies = init_dependencies
 
-  def artifactId_to_key(artifactId)
-      artifactId.gsub(/-/, "_").to_sym
-  end
+      @src_dirs = {
+        :main => Pathname.new(@epom_xml.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:sourceDirectory/text()", @namespaces).text),
+        :test => Pathname.new(@epom_xml.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:testSourceDirectory/text()", @namespaces).text)
+      }
 
-  def key_to_artifactId(key)
-      key.to_s.gsub(/_/, "-")
-  end
+      # find the sources for just the project root
+      @sources = {
+        main: find_sources(@src_dirs[:main], '**/*.java'),
+        test: find_sources(@src_dirs[:test], '**/*.java'),
+      }
+    end
 
-  # TODO:  Refactor this to ProjectModule
-  def init_dependencies
-    return Hash.new unless ClideConfig.instance.poms_have_been_updated?
+    def artifactId_to_key(artifactId)
+        artifactId.gsub(/-/, "_").to_sym
+    end
 
-    parent = @pom.xpath "//xmlns:project[xmlns:modules]", @namespaces
-    projects = @pom.xpath "//xmlns:project/xmlns:modules/xmlns:module/text()", @namespaces
+    def key_to_artifactId(key)
+        key.to_s.gsub(/_/, "-")
+    end
 
-    dependencies = {}
-    dependencies[:all] = {}
+    # TODO:  Refactor this to ProjectModule
+    def init_dependencies
+        parent = @epom_xml.xpath "//xmlns:project[xmlns:modules]", @namespaces
+        projects = @epom_xml.xpath "//xmlns:project/xmlns:modules/xmlns:module/text()", @namespaces
 
-    projects.each { |prj|
-        project_name = artifactId_to_key prj.text
-        dependencies[project_name] = Set.new
+        @dependencies = {}
+        @dependencies[:all] = {}
 
-        prj.xpath("//xmlns:dependencies/xmlns:dependency", prj.namespaces).each { |dep|
-            dependency = Dependency.new dep
-            dependencies[:all][dependency.coordinate] = dependency
-            dependencies[project_name] << dependency.coordinate
+        projects.each { |prj|
+            project_name = artifactId_to_key prj.text
+            @dependencies[project_name] = Set.new
+
+            prj.xpath("//xmlns:dependencies/xmlns:dependency", prj.namespaces).each { |dep|
+                dependency = Dependency.new dep
+                @dependencies[:all][dependency.coordinate] = dependency
+                @dependencies[project_name] << dependency.coordinate
+            }
         }
-    }
 
-    ClideConfig.instance[:dependencies][:file].open('w+') { |file|
-        file.write Psych.dump dependencies
-    }
+        ClideConfig.instance[:dependencies][:file].open('w+') { |file|
+            file.write Psych.dump @dependencies
+        }
 
-    @dependencies
-  end
+        @dependencies
+    end
 
-  ##
-  # A parent project is one which has 1 or more modules defined in the pom
-  def is_parent?
-      !@pom.modules.empty?
-  end
+    ##
+    # A parent project is one which has 1 or more modules defined in the pom
+    def is_parent?
+        !@epom_xml.modules.empty?
+    end
 
-  def dump_pom_md5s
-      md5s = []
-      modules.each_key { |m|
-          mpom = ClideConfig.instance[:project_root] + (key_to_artifactId m) + 'pom.xml'
+    def get_pom_md5s
+        md5s = [ @root_pom_src.to_md5 ]
+        @modules.each { |k,module_pom|
+            md5s << module_pom.pom_src.to_md5
+        }
+        md5s
+    end
 
-          md5s << "#{Digest::MD5.file mpom} #{mpom}"
-      }
-      md5s
-  end
+    def dump_source_md5s
+        @conf[:source_md5s].open("w+") { |srcmd5s|
+            @sources.each { |type, srcfiles|
+                srcfiles.each { |f| 
+                    srcmd5s.puts f.to_md5 
+                }
+            } 
+        }
+    end
 
-  def dump_source_md5s
-  end
+    def changed_sources
+        @sources.each { |type,srclist|
+            srclist.each { |src|
+                puts src.filename if src.is_out_of_date?
+            }
+        }
 
-  def changed_sources
-      @sources.each { |type,srclist|
-          srclist.each { |src|
-              puts "#{type},#{src}" if src.is_out_of_date?
-              puts "." unless src.is_out_of_date?
-          }
-      }
-  end
+        @modules.each { |modsym, modobj|
+            modobj.sources.each { |type, srclist|
+                srclist.each { |src|
+                    puts src.filename if src.is_out_of_date?
+                }
+            }
+        }
+    end
 
-  private :init_dependencies, :has_parent?
+    private :init_dependencies
 end
 #}}}
 
 ##
 # Load or create the effective pom
 #{{{
-def load_effective_pom(conf = ClideConfig.instance)
-    epomfname = conf[:effective_pom]
+def load_effective_pom(clide)
+    epomfname = clide.conf[:effective_pom]
 
     unless epomfname.exist?
-        `(cd #{conf[:project_root]}; mvn help:effective-pom -Doutput=#{epomfname})`
+        `(cd #{clide.conf[:project_root]}; mvn help:effective-pom -Doutput=#{epomfname})`
     end
 
     Project.new epomfname
 end
 #}}}
-
-epom = load_effective_pom
-epom.changed_sources
-pp epom.modules
-
-#conf[:dependencies].open('w+') { |f|
-    #f.puts epom.dependencies.to_yaml
-#}

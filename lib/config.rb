@@ -57,11 +57,18 @@ class ClideConfig
             @params[:compiler_output]     = Pathname.new(ENV['CLIDE_COMPILER_OUTPUT']    || clide_conf_dir + "compiler.output").realdirpath
             @params[:dep_classes_dir]     = Pathname.new(ENV['CLIDE_DEPENDENCY_CLASSES'] || clide_conf_dir + "dep_classes").realdirpath
 
-            @params[:classpath][:file]    = Pathname.new(ENV['CLIDE_CLASSPATH_FILE']     || clide_conf_dir + "classpath.txt").realdirpath
+            @params[:classpath][:file]    = Pathname.new(ENV['CLIDE_CLASSPATH_FILE']     || clide_conf_dir + "classpath.yaml").realdirpath
             @params[:dependencies][:file] = Pathname.new(ENV['CLIDE_DEPENDENCIES']       || clide_conf_dir + "dependencies.yaml").realdirpath
 
             @params[:source_md5s]         = Pathname.new(ENV['CLIDE_SOURCE_MD5S']        || clide_conf_dir + "source.md5").realdirpath
             @params[:test_source_md5s]    = Pathname.new(ENV['CLIDE_TEST_SOURCE_MD5S']   || clide_conf_dir + "test_source.md5").realdirpath
+
+            if ENV['CLIDE_PLUGIN_DIRS'].nil?
+                @params[:plugin_directories] = nil
+            else
+                @params[:plugin_directories]  = Pathname.new(ENV['CLIDE_PLUGIN_DIRS']).realdirpath 
+            end
+            pp ENV
 
             File.open(@params[:cliderc], 'w+') { |rc_file|
                 rc_file.write Psych.dump @params
@@ -73,6 +80,12 @@ class ClideConfig
     #{{{
     def [](key)
         @params[key]
+    end
+    #}}}
+
+    #{{{
+    def []=(key, value)
+        @params[key] = value
     end
     #}}}
 
