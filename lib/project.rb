@@ -50,7 +50,7 @@ class SourceFile
     end
 
     def is_out_of_date?
-        src_md5s = Psych.load_file @conf[:source_md5s]
+        src_md5s = Psych.load_file @clide.conf[:source_md5s]
         new_md5 = Digest::MD5.file @filename
         if new_md5 == @md5
             false
@@ -79,10 +79,9 @@ class ModuleProject
     attr_reader :name, :src_dirs, :sources, :pom_src
 
     def initialize(name, modpom, namespaces, clide = nil)
-        @conf       = ClideConfig.instance
         @namespaces = namespaces
         @name       = name
-        @pom_src    = SourceFile.new @conf[:project_root] + name + "pom.xml"
+        @pom_src    = SourceFile.new @clide.conf[:project_root] + name + "pom.xml"
 
         @src_dirs = {
             :main => Pathname.new(modpom.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:sourceDirectory/text()", @namespaces).text),
@@ -110,11 +109,10 @@ class Project
     def initialize(fname, clide = nil)
       @clide = clide
       return unless fname.exist?
-      @conf = ClideConfig.instance
       @module_poms = []
 
       @epom_fname   = fname
-      @project_root = @conf[:project_root]
+      @project_root = @clide.conf[:project_root]
       @root_pom_src = SourceFile.new(@project_root + "pom.xml")
 
       @epom_xml     = Nokogiri::XML(File.open(@epom_fname, 'r'))
@@ -166,7 +164,7 @@ class Project
             }
         }
 
-        ClideConfig.instance[:dependencies][:file].open('w+') { |file|
+        @clide.conf[:dependencies][:file].open('w+') { |file|
             file.write Psych.dump @dependencies
         }
 
@@ -188,7 +186,7 @@ class Project
     end
 
     def dump_source_md5s
-        @conf[:source_md5s].open("w+") { |srcmd5s|
+        @clide.conf[:source_md5s].open("w+") { |srcmd5s|
             @sources.each { |type, srcfiles|
                 srcfiles.each { |f| 
                     srcmd5s.puts f.to_md5 
@@ -218,9 +216,11 @@ end
 #}}}
 
 ##
-# Load or create the effective pom
+# Lazy load the effective pom.  We only want to parse the effective pom on initializing or updating a clide project, or
+# when the pom's have been modified, and we want to guarantee to do this only once per invocation.
 #{{{
-def load_effective_pom(clide)
+def load_effective_pom(clide, force = false)
+    return unless clide.poms_have_been_updated?
     epomfname = clide.conf[:effective_pom]
 
     unless epomfname.exist?

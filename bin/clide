@@ -1,26 +1,25 @@
 #!/usr/bin/env ruby
+#!/usr/bin/env ruby -r tracer
 # vim: fdm=marker
 
 require 'optparse'
 require 'pp'
 require 'psych'
 
+require_relative '../lib/config'
 require_relative '../lib/project'
 
 # Top level command to manage a maven java project from the command line.
 
 #{{{
 class Clide
-  attr_accessor :conf, :root_pom
+  attr_accessor :conf
   
   def initialize
     @conf = ClideConfig.instance
-    if @conf[:effective_pom].exist?
-      @pom = load_effective_pom(self)
-    end
-
     @plugins = {}
     @commands = {}
+    @pom = nil
   end
 
   def Clide.is_command_registered?(cmdname)
@@ -53,16 +52,24 @@ class Clide
   #}}}
 
   #{{{
-  def update_dependencies
-    # determine dependencies and store them
+  def update_dependencies(force = false)
+    return if !force && poms_have_been_updated?
+
+    # poms have been updated, update the dependencies
+    pom = load_effective_pom(self, force)
     @conf[:dependencies][:file].open('w+') { |file|
-      file.write Psych.dump @pom.dependencies
+      file.write Psych.dump pom.dependencies
     }
   end
   #}}}
 
+  def update_project_if_needed
+  end
+
   #{{{
   def generate_classpaths
+    update_project_if_needed
+
     # generate the classpath for each module
     @pom.modules.each_key { |module_key|
       @conf[:classpath] = Hash.new if @conf[:classpath].nil?
@@ -79,7 +86,7 @@ class Clide
   #}}}
 
   #{{{
-  def load_dependencies
+  def load_dependencies(force = false)
     if @conf[:dependencies][:file].exist?
       @conf[:dependencies][:deps] = Psych.load_file @conf[:dependencies][:file]
     else
@@ -89,7 +96,7 @@ class Clide
   #}}}
 
   #{{{
-  def load_classpaths
+  def load_classpaths(force = false)
     if @conf[:classpath][:file].exist?
       @conf[:classpath][:modules] = Psych.load_file @conf[:classpath][:file]
     else
@@ -99,6 +106,7 @@ class Clide
   #}}}
 
   def get_classpath(mod)
+    pp @conf[:classpath]
     @conf[:classpath][:modules][@pom.artifactId_to_key mod.first].to_a
   end
 
@@ -111,20 +119,9 @@ class Clide
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
     @pom = load_effective_pom self
 
-    # calculate the md5 hash of every pom and store it if needed
-    if @conf.poms_have_been_updated?
-      # todo: get the updated pom...
-      @conf[:pom_md5].open('w+') { |file| file.puts @pom.get_pom_md5s }
-      update_dependencies
-      generate_classpaths
-    else
-      load_dependencies
-      load_classpaths
-    end
-
-    unless @conf[:source_md5s].exist?
-      @pom.dump_source_md5s
-    end
+    load_dependencies(true)
+    load_classpaths(true)
+    @pom.dump_source_md5s
   end
   #}}}
 
@@ -170,10 +167,9 @@ class Clide
 
   #{{{
   def clean
-    conf = ClideConfig.instance
-    Pathname::glob(conf[:clide_conf_dir] + '*').each { |file| file.delete }
-    conf[:clide_conf_dir].rmdir
-    conf[:cliderc].delete
+    Pathname::glob(@conf[:clide_conf_dir] + '*').each { |file| file.delete }
+    @conf[:clide_conf_dir].rmdir
+    @conf[:cliderc].delete
   end
   #}}}
 
@@ -217,6 +213,10 @@ class Clide
     end
   end
   #}}}
+
+  def to_module_key(modname)
+    modname.gsub(/-/, "_").to_sym
+  end
 end
 #}}}
 
