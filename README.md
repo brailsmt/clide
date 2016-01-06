@@ -3,6 +3,7 @@ small changes in code and how poorly it integrates with vim/gvim.  Along with a 
 one-size-fits-all IDEs.
 
 Update 01/05/2016:
+-----------------
 So, this is what I get for starting a project with little more than a vague idea of what I want.  After hacking around
 for awhile, I have to come to conclusion that an IDE requires a significant amount of configuration.  Maven is lifecycle
 management tool, not a development tool.  I feel that a very large amount of the benefit of clide will be in
