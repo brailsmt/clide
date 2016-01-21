@@ -14,12 +14,11 @@ require_relative '../lib/project'
 #{{{
 class Clide
   attr_accessor :conf
-  
+
   def initialize
     @conf = ClideConfig.instance
     @plugins = {}
     @commands = {}
-    @pom = nil
   end
 
   def Clide.is_command_registered?(cmdname)
@@ -27,56 +26,14 @@ class Clide
   end
 
   #{{{
-  def register_plugin(plugin)
-    new_plugin = plugin.new @conf
-    if @plugins.has_key? new_plugin.name
-      puts "A plugin for #{new_plugin.name} already exists!  Aborting!"
-      false
-    else
-      @plugins[new_plugin.name] = new_plugin
-
-      new_plugin.commands.each { |cmd|
-        @commands[cmd] = new_plugin
-      }
-      true
-    end
-  end
-  #}}}
-
-  ##
-  # Generates import statements for all the provided keywords
-  #{{{
-  def gen_imports(keywords)
-    puts "Not implemented"
-  end
-  #}}}
-
-  #{{{
-  def update_dependencies(force = false)
-    return if !force && poms_have_been_updated?
-
-    # poms have been updated, update the dependencies
-    pom = load_effective_pom(self, force)
-    @conf[:dependencies][:file].open('w+') { |file|
-      file.write Psych.dump pom.dependencies
-    }
-  end
-  #}}}
-
-  def update_project_if_needed
-  end
-
-  #{{{
-  def generate_classpaths
-    update_project_if_needed
-
+  def generate_classpaths(artifacts = nil)
     # generate the classpath for each module
-    @pom.modules.each_key { |module_key|
-      @conf[:classpath] = Hash.new if @conf[:classpath].nil?
-      @conf[:classpath][module_key] = Set.new if @conf[:classpath][module_key].nil?
+    @conf[:modules].each_key { |mod|
+      cpathfile = @conf[:clide_conf_dir] + mod + @conf[:module][:classpath]
 
-      @pom.dependencies[module_key].each { |dep_coordinate|
-        @conf[:classpath][module_key] << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
+      classpath = Set.new
+      artifacts.each { |dep_coordinate|
+        classpath << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
       }
     }
     @conf[:classpath][:file].open('w+') { |file| 
@@ -87,11 +44,6 @@ class Clide
 
   #{{{
   def load_dependencies(force = false)
-    if @conf[:dependencies][:file].exist?
-      @conf[:dependencies][:deps] = Psych.load_file @conf[:dependencies][:file]
-    else
-      update_dependencies
-    end
   end
   #}}}
 
@@ -105,63 +57,19 @@ class Clide
   end
   #}}}
 
-  def get_classpath(mod)
-    pp @conf[:classpath]
-    @conf[:classpath][:modules][@pom.artifactId_to_key mod.first].to_a
-  end
-
   ##
-  # Initialize clide by parsing the pom and storing the data in the .clide directory
+  # Initialize/Update clide by parsing the pom and storing the data in the .clide directory
   #{{{
   def init
-    # grab the project root pom
-    root_pom = Project.new(@conf[:project_root] + "pom.xml", self)
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
-    @pom = load_effective_pom self
+    unless @conf[:effective_pom].exist?
+      `(cd #{@conf[:project_root]}; mvn help:effective-pom -Doutput=#{@conf[:effective_pom]})`
+    end
+    @pom = Project.new(self, Nokogiri::XML(File.open(@conf[:effective_pom], 'r')))
 
     load_dependencies(true)
     load_classpaths(true)
     @pom.dump_source_md5s
-  end
-  #}}}
-
-  #{{{
-  def Clide.help(args = nil)
-    puts "Unknown command:  #{args}" unless args == nil
-    puts "Usage:  clide [options] [command [arguments]]"
-    puts "  Options:"
-    puts "    -s        have source files been updated? exit code: 0 = yes, 1 = no"
-    puts "    -d        have dependencies been updated? exit code: 0 = yes, 1 = no"
-    puts 
-    puts "  All available commands have additional help, use 'clide <cmd> help'"
-    puts "  Available Commands:"
-    puts "    help:     display this message"
-    puts "    init:     initialize project"
-    puts "    imports:  list imports"
-    puts "    deps:     list dependencies"
-    puts "    update:   update/reinitialize project"
-    puts ""
-#    @commands.each { |name, cmd|
-#      puts "    #{cmd[:name]}:   #{cmd[:description]}"
-#    }
-  end
-  #}}}
-
-  #{{{
-  def list_deps(prj_name = Pathname::pwd.basename)
-    puts prj_name
-    puts 
-  end
-  #}}}
-
-  #{{{
-  def compile
-    # did any files change?
-    #   no: exit
-    # did deps change?
-    #   yes: update_dependencies
-    # for each module with file changes
-    #   compile changed files
   end
   #}}}
 
@@ -175,82 +83,17 @@ class Clide
 
   #{{{
   def run(args)
-    opt_parser = OptionParser.new { |opts|
-      opts.on('-s', '--updated-sources', 'have source files been updated? exit code: 0 = yes, 1 = no') { |opt|
-        puts "Not Implemented.  -s will exit with a status of 0 if sources have changed, non-zero otherwise"
-        exit 1
-      }
-
-      opts.on('-d', '--updated-dependencies', 'have dependencies been changed? exit code: 0 = yes, 1 = no') { |opt|
-        puts "Not Implemented.  -d will exit with a status of 0 is dependencies have changed, non-zero otherwise"
-        exit 1
-      }
-    }
-    opt_parser.parse!
-
-    command = args.shift
-
-    case command
-    when 'init', 'update', 'up', 'refresh'
-      init
-    when 'clean'
-      clean
-    when 'imports', 'imp'
-      #gen_imports args
-      raise "Not implemented!"
-    when 'deps'
-      #list_deps
-      raise "Not implemented!"
-    when 'help'
-      Clide.help
-    else
-      if @plugins.has_key? command
-        args.shift
-        @plugins[command].run self, args
-      else
-        Clide.help command
-      end
-    end
+    init
   end
   #}}}
-
-  def to_module_key(modname)
-    modname.gsub(/-/, "_").to_sym
-  end
-end
-#}}}
-
-
-#{{{
-def load_plugins(clide)
-  conf = clide.conf
-  conf[:plugins] = {}
-  unless conf[:plugin_directories].nil?
-    conf[:plugin_directories].each { |dir|
-      allmodules = Module.constants
-      Dir[dir.realdirpath + "*.rb"].each { |plugin|
-        require "#{plugin}"
-      }
-
-      # register all new modules
-      (Module.constants - allmodules).each { |mod_constant|
-        mod = (Module.const_get mod_constant)
-        next unless mod::respond_to? :register
-        mod::register(clide)
-      }
-    }
-  end
 end
 #}}}
 
 begin
   clide = Clide.new
-
-  load_plugins clide
-
   clide.run(ARGV)
 rescue
   puts $!
   puts $!.backtrace
-  Clide.help
+  puts "<print help doc here>"
 end

@@ -27,46 +27,34 @@ class ClideConfig
   # directory from the current working directory up to the user's home directory.
   #{{{
   def initialize
-    clide_conf_dir = Pathname.new(".clide")
-    cliderc        = ".cliderc"
+    project_root = Pathname::pwd  # for now clide must be run from the project root
 
-    @project_root = ClideConfig.find_project_root_quick_and_dirty.realpath
-    @params = {}
+    cliderc = (project_root + (ENV['CLIDERC'] || ".cliderc")).realdirpath
 
-    projectrc = @project_root + cliderc
-    if projectrc.exist? 
-      @params = Psych.load_file projectrc
+    if cliderc.exist? 
+      @params = Psych.load_file cliderc
     else
-      clide_conf_dir = (@project_root + clide_conf_dir).realdirpath
+      @params = {}
 
-      @params[:project_root]   = @project_root
-      @params[:clide_conf_dir] = clide_conf_dir
-      @params[:cliderc]        = projectrc.realdirpath
-      @params[:classpath]      = {}
-      @params[:dependencies]   = {}
+      @params[:project_root]      = project_root
+      @params[:cliderc]           = cliderc.realdirpath
+      @params[:clide_conf_dir]    = (project_root + (ENV['CLIDE_CONF_DIR'] || ".clide"  )).realdirpath
 
+      Dir.mkdir @params[:clide_conf_dir] unless @params[:clide_conf_dir].exist?
 
-      Dir.mkdir clide_conf_dir unless clide_conf_dir.exist?
-      @params[:pom_md5]             = Pathname.new(ENV['CLIDE_POM_MD5']            || clide_conf_dir + "pom.md5").realdirpath
-      @params[:effective_pom]       = Pathname.new(ENV['CLIDE_EFFECTIVE_POM']      || clide_conf_dir + "epom.xml").realdirpath
-      @params[:maven_output_file]   = Pathname.new(ENV['CLIDE_MAVEN_OUTPUT_FILE']  || clide_conf_dir + "maven.out").realdirpath
-      @params[:javafiles]           = Pathname.new(ENV['CLIDE_JAVAFILES']          || clide_conf_dir + "java.src").realdirpath
-      @params[:testjavafiles]       = Pathname.new(ENV['CLIDE_TESTJAVAFILES']      || clide_conf_dir + "java.test.src").realdirpath
-      @params[:build_order]         = Pathname.new(ENV['CLIDE_BUILD_ORDER']        || clide_conf_dir + "build.order").realdirpath
-      @params[:compile_commands]    = Pathname.new(ENV['CLIDE_COMPILE_COMMANDS']   || clide_conf_dir + "compile.sh").realdirpath
-      @params[:compiler_output]     = Pathname.new(ENV['CLIDE_COMPILER_OUTPUT']    || clide_conf_dir + "compiler.output").realdirpath
-      @params[:dep_classes_dir]     = Pathname.new(ENV['CLIDE_DEPENDENCY_CLASSES'] || clide_conf_dir + "dep_classes").realdirpath
-      @params[:classpath][:file]    = Pathname.new(ENV['CLIDE_CLASSPATH_FILE']     || clide_conf_dir + "classpath.yaml").realdirpath
-      @params[:dependencies][:file] = Pathname.new(ENV['CLIDE_DEPENDENCIES']       || clide_conf_dir + "dependencies.yaml").realdirpath
-      @params[:source_md5s]         = Pathname.new(ENV['CLIDE_SOURCE_MD5S']        || clide_conf_dir + "source.md5").realdirpath
-      @params[:test_source_md5s]    = Pathname.new(ENV['CLIDE_TEST_SOURCE_MD5S']   || clide_conf_dir + "test_source.md5").realdirpath
+      @params[:maven_output_file] = (@params[:clide_conf_dir] + "maven.out").realdirpath
+      @params[:pom_md5]           = (@params[:clide_conf_dir] + "pom.md5").realdirpath
+      @params[:effective_pom]     = (@params[:clide_conf_dir] + "epom.xml").realdirpath
 
-      if ENV['CLIDE_PLUGIN_DIRS'].nil?
-        @params[:plugin_directories] = nil
-      else
-        @params[:plugin_directories]  = Pathname.new(ENV['CLIDE_PLUGIN_DIRS']).realdirpath 
-      end
-      pp ENV
+      # list of all modules in a reactor build, plus the :all module for parent/non-reactor projects
+      @params[:modules] = [:all]
+
+      # module specific configuration directories, beneath each module directory, these files will exist
+      @params[:module] = {}
+      @params[:module][:classpath] = "classpath"
+      @params[:module][:deps]      = "dependencies"
+      @params[:module][:javasrc]   = "md5"
+      @params[:module][:testsrc]   = "test_md5"
 
       File.open(@params[:cliderc], 'w+') { |rc_file|
         rc_file.write Psych.dump @params
@@ -84,16 +72,6 @@ class ClideConfig
   #{{{
   def []=(key, value)
     @params[key] = value
-  end
-  #}}}
-
-  #{{{
-  def ClideConfig.find_project_root_quick_and_dirty(dir = Pathname::pwd)
-    pomfname = 'pom.xml'
-    candidates = search_up_for pomfname, {start_dir: dir}
-
-    raise "#{pomfname} count not be found!" if candidates.nil? || candidates.empty?
-    candidates.last
   end
   #}}}
 
