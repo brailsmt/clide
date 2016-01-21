@@ -50,14 +50,14 @@ class SourceFile
   end
 
   def is_out_of_date?
-    src_md5s = Psych.load_file @clide.conf[:source_md5s]
-    new_md5 = Digest::MD5.file @filename
-    if new_md5 == @md5
-      false
-    else
-      @md5 = new_md5
-      true
-    end
+#    src_md5s = Psych.load_file @clide.conf[:source_md5s]
+#    new_md5 = Digest::MD5.file @filename
+#    if new_md5 == @md5
+#      false
+#    else
+#      @md5 = new_md5
+#      true
+#    end
   end
   alias_method :recompile?, :is_out_of_date?
 
@@ -72,35 +72,27 @@ DBG=Pathname.new('out.dbg.txt').open('w')
 # Object to represent all useful information from a maven pom.
 #{{{
 class Project
-  attr_accessor :key
+  attr_accessor :key, :deps, :src_dirs, :sources
 
-  def initialize(clide, pom, namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' })
+  def initialize(pom, namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' })
     @all_sources = Set.new
-    @clide = clide
-    @pom   = pom
-    @namespaces = namespaces
+    @pom         = pom
+    @namespaces  = namespaces
+    @deps        = Set.new
+    @src_dirs    = {}
+    @sources     = {}
 
-    groupId    = @pom.xpath('./xmlns:groupId/text()',    @namespaces).text.strip
-    artifactId = @pom.xpath('./xmlns:artifactId/text()', @namespaces).text.strip
-    @key       = "#{groupId}:#{artifactId}"
+    @groupId    = @pom.xpath('xmlns:groupId/text()',    @namespaces).text.strip
+    @artifactId = @pom.xpath('xmlns:artifactId/text()', @namespaces).text.strip
+    @key       = "#{@groupId}:#{@artifactId}"
 
-    @modules = {}
-    @pom.xpath("//xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
-      mod = Project.new(clide, @pom.xpath("xmlns:project[xmlns:artifactId = \"#{mname}\"]", @namespaces))
-      @modules[mod.key] = mod
+    @modules = nil
+    @pom.xpath("//xmlns:project/xmlns:modules/xmlns:module/text()", @namespaces).each { |mname|
+      @modules = [] if @modules.nil?
+      @modules << "#{@groupId}:#{mname}"
     }
-    @deps = init_dependencies
-
-    @src_dirs = {
-      :main => Pathname.new(@pom.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:sourceDirectory/text()", @namespaces).text),
-      :test => Pathname.new(@pom.xpath("//xmlns:project[xmlns:artifactId = \"#{@name}\"]/xmlns:build/xmlns:testSourceDirectory/text()", @namespaces).text)
-    }
-
-    # find all sources in the project
-    @sources = {
-      main: find_sources(@src_dirs[:main], '**/*.java'),
-      test: find_sources(@src_dirs[:test], '**/*.java'),
-    }
+    init_dependencies
+    init_sources
   end
 
   def artifactId_to_key(artifactId)
@@ -111,36 +103,21 @@ class Project
     key.to_s.gsub(/_/, "-")
   end
 
-  # TODO:  Refactor this to ProjectModule
   def init_dependencies
-    parent = @pom.xpath "//xmlns:project[xmlns:modules]", @namespaces
-    projects = @pom.xpath "//xmlns:project/xmlns:modules/xmlns:module/text()", @namespaces
-
-    @deps = {}
-    @deps[:all] = {}
-
-    projects.each { |prj|
-      project_name = artifactId_to_key prj.text
-      @deps[project_name] = Set.new
-
-      prj.xpath("//xmlns:dependencies/xmlns:dependency", prj.namespaces).each { |dep|
-        dependency = Dependency.new dep
-        @deps[:all][dependency.coordinate] = dependency
-        @deps[project_name] << dependency.coordinate
-      }
+    @pom.xpath("xmlns:dependencies/xmlns:dependency", @namespaces).each { |dep|
+      @deps << Dependency.new(dep)
     }
-
-    @clide.conf[:deps][:file].open('w+') { |file|
-      file.write Psych.dump @deps
-    }
-
-    @deps
   end
 
-  ##
-  # A parent project is one which has 1 or more modules defined in the pom
-  def is_parent?
-    !@pom.modules.empty?
+  def init_sources
+    @src_dirs = {
+      :main => Pathname.new(@pom.xpath("xmlns:sourceDirectory/text()", @namespaces).text),
+      :test => Pathname.new(@pom.xpath("xmlns:testSourceDirectory/text()", @namespaces).text)
+    }
+
+    @src_dirs.each { |type, src_dir|
+      @sources[type] = find_sources(src_dir, '**/*.java')
+    }
   end
 
   def get_pom_md5s
@@ -152,13 +129,13 @@ class Project
   end
 
   def dump_source_md5s
-    @clide.conf[:source_md5s].open("w+") { |srcmd5s|
-      @sources.each { |type, srcfiles|
-        srcfiles.each { |f| 
-          srcmd5s.puts f.to_md5 
-        }
-      } 
-    }
+#    @clide.conf[:source_md5s].open("w+") { |srcmd5s|
+#      @sources.each { |type, srcfiles|
+#        srcfiles.each { |f| 
+#          srcmd5s.puts f.to_md5 
+#        }
+#      } 
+#    }
   end
 
   def changed_sources
@@ -181,6 +158,10 @@ class Project
     Pathname::glob(dir + glob).collect { |src|
       SourceFile.new src
     }
+  end
+
+  def classpath
+
   end
 
   private :init_dependencies

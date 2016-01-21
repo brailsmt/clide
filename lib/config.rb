@@ -46,19 +46,10 @@ class ClideConfig
       @params[:pom_md5]           = (@params[:clide_conf_dir] + "pom.md5").realdirpath
       @params[:effective_pom]     = (@params[:clide_conf_dir] + "epom.xml").realdirpath
 
-      # list of all modules in a reactor build, plus the :all module for parent/non-reactor projects
-      @params[:modules] = [:all]
-
       # module specific configuration directories, beneath each module directory, these files will exist
-      @params[:module] = {}
-      @params[:module][:classpath] = "classpath"
-      @params[:module][:deps]      = "dependencies"
-      @params[:module][:javasrc]   = "md5"
-      @params[:module][:testsrc]   = "test_md5"
+      @params[:projects] = []
 
-      File.open(@params[:cliderc], 'w+') { |rc_file|
-        rc_file.write Psych.dump @params
-      }
+      save
     end
   end
   #}}}
@@ -101,5 +92,11 @@ class ClideConfig
     end
   end
   #}}}
+
+  def save
+    File.open(@params[:cliderc], 'w+') { |rc_file|
+      rc_file.write Psych.dump @params
+    }
+  end
 end
 #}}}

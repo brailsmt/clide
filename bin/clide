@@ -13,12 +13,13 @@ require_relative '../lib/project'
 
 #{{{
 class Clide
-  attr_accessor :conf
+  attr_accessor :conf, :projects
 
   def initialize
     @conf = ClideConfig.instance
-    @plugins = {}
+    @plugins  = {}
     @commands = {}
+    @projects = {}
   end
 
   def Clide.is_command_registered?(cmdname)
@@ -42,21 +43,6 @@ class Clide
   end
   #}}}
 
-  #{{{
-  def load_dependencies(force = false)
-  end
-  #}}}
-
-  #{{{
-  def load_classpaths(force = false)
-    if @conf[:classpath][:file].exist?
-      @conf[:classpath][:modules] = Psych.load_file @conf[:classpath][:file]
-    else
-      generate_classpaths
-    end
-  end
-  #}}}
-
   ##
   # Initialize/Update clide by parsing the pom and storing the data in the .clide directory
   #{{{
@@ -65,11 +51,14 @@ class Clide
     unless @conf[:effective_pom].exist?
       `(cd #{@conf[:project_root]}; mvn help:effective-pom -Doutput=#{@conf[:effective_pom]})`
     end
-    @pom = Project.new(self, Nokogiri::XML(File.open(@conf[:effective_pom], 'r')))
+    namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' }
+    epom = Nokogiri::XML(File.open(@conf[:effective_pom], 'r'))
+    epom.xpath("//xmlns:project", namespaces).each { |project_pom|
+      project = Project.new(project_pom)
 
-    load_dependencies(true)
-    load_classpaths(true)
-    @pom.dump_source_md5s
+      @projects[project.key] = project
+    }
+    @conf[:projects] = @projects
   end
   #}}}
 
@@ -92,6 +81,7 @@ end
 begin
   clide = Clide.new
   clide.run(ARGV)
+  ClideConfig.instance.save
 rescue
   puts $!
   puts $!.backtrace

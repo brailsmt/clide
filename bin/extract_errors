@@ -163,11 +163,4 @@ def mvn_failures(file)
   outcomes
 end
 
-def is_parent?(dir)
-  # Do some pom.xml parsing, this belongs in a class by itself...  only not now
-  doc = Nokogiri::XML(File.open("pom.xml"), nil, 'utf-8')
-  ns = doc.collect_namespaces['xmlns']
-  doc.xpath("/ns:project/ns:modules", {'ns' => ns})
-end
-
 main ARGV
