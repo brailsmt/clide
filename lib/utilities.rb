@@ -6,6 +6,7 @@
 
 require 'pp'
 require 'pathname'
+require 'digest'
 
 #{{{
 def search_up_for(filename, opt_hsh = {})

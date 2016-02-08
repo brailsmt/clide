@@ -91,13 +91,14 @@ class CompileResult < Result
       end
     else
       nil
-  end
+    end
 
-  def to_vim_errorformat
+    def to_vim_errorformat
       "#{vim_type} #{result[:file]} #{result[:line]} #{result[:col]} #{result[:message]}"
+    end
   end
+  #}}}
 end
-#}}}
 
 #{{{
 class MavenOutcomes
@@ -112,16 +113,16 @@ class MavenOutcomes
 
   def get_outcomes_for(type)
     case type
-      when :test_errors
-        @test_errors
-      when :test_failures
-        @test_failures
-      when :compile_errors
-        @compile_errors
-      when :compile_warnings
-        @compile_warnings
-      else
-        nil
+    when :test_errors
+      @test_errors
+    when :test_failures
+      @test_failures
+    when :compile_errors
+      @compile_errors
+    when :compile_warnings
+      @compile_warnings
+    else
+      nil
     end
   end
 end
@@ -131,28 +132,28 @@ def mvn_failures(file)
   outcomes = MavenOutcomes.new
 
   file.each_line { |line|
-    cresult = CompileResult.new(line)
-    tresult = TestResult.new(line)
+    cresult = CompileResult.build(line)
+    tresult = nil #TestResult.build(line)
     begin
       case line
-        when TEST_ISSUES_REGEX
-          method = $~["method"]
-          cls = $~["cls"]
-          type = ($~["err"] || $~["fail"]).downcase
-          if type == 'e'
-            outcomes.test_errors << {:method => method, :class => cls, :type => type}
-          elsif type == 'f'
-            outcomes.test_failures << {:method => method, :class => cls, :type => type}
-          end
+      when TEST_ISSUES_REGEX
+        method = $~["method"]
+        cls = $~["cls"]
+        type = ($~["err"] || $~["fail"]).downcase
+        if type == 'e'
+          outcomes.test_errors << {:method => method, :class => cls, :type => type}
+        elsif type == 'f'
+          outcomes.test_failures << {:method => method, :class => cls, :type => type}
+        end
 
-        when COMPILE_ISSUES_REGEX
-          type = $1 || $2
-          (file, linenum, col, msg) = $~[3..$~.size]
-          if type.downcase == 'e'
-            outcomes.compile_errors << {:file => file, :line => linenum, :col => col, :message => msg}
-          elsif type.downcase == 'w'
-            outcomes.compile_warnings << {:file => file, :line => linenum, :col => col, :message => msg}
-          end
+      when COMPILE_ISSUES_REGEX
+        type = $1 || $2
+        (file, linenum, col, msg) = $~[3..$~.size]
+        if type.downcase == 'e'
+          outcomes.compile_errors << {:file => file, :line => linenum, :col => col, :message => msg}
+        elsif type.downcase == 'w'
+          outcomes.compile_warnings << {:file => file, :line => linenum, :col => col, :message => msg}
+        end
 
       end
     rescue

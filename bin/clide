@@ -4,7 +4,7 @@
 
 require 'optparse'
 require 'pp'
-require 'psych'
+require 'yaml'
 
 require_relative '../lib/config'
 require_relative '../lib/project'
@@ -16,10 +16,9 @@ class Clide
   attr_accessor :conf, :projects
 
   def initialize
-    @conf = ClideConfig.instance
+    @conf = ClideConfig.new
     @plugins  = {}
     @commands = {}
-    @projects = {}
   end
 
   def Clide.is_command_registered?(cmdname)
@@ -38,10 +37,14 @@ class Clide
       }
     }
     @conf[:classpath][:file].open('w+') { |file| 
-      file.write Psych.dump @conf[:classpath]
+      file.write @conf[:classpath]
     }
   end
   #}}}
+
+  def save
+    @conf.save
+  end
 
   ##
   # Initialize/Update clide by parsing the pom and storing the data in the .clide directory
@@ -53,12 +56,8 @@ class Clide
     end
     namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' }
     epom = Nokogiri::XML(File.open(@conf[:effective_pom], 'r'))
-    epom.xpath("//xmlns:project", namespaces).each { |project_pom|
-      project = Project.new(project_pom)
 
-      @projects[project.key] = project
-    }
-    @conf[:projects] = @projects
+    Project.new(@conf, epom)
   end
   #}}}
 
@@ -72,7 +71,13 @@ class Clide
 
   #{{{
   def run(args)
-    init
+    cmd = args.first
+    case cmd
+    when "init", "update"
+      init
+    when "clean"
+      clean
+    end
   end
   #}}}
 end
@@ -81,7 +86,7 @@ end
 begin
   clide = Clide.new
   clide.run(ARGV)
-  ClideConfig.instance.save
+  clide.save
 rescue
   puts $!
   puts $!.backtrace

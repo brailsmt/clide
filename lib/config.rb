@@ -6,6 +6,7 @@
 
 require 'singleton'
 require 'pathname'
+require 'digest'
 require 'psych'
 
 require_relative 'utilities'
@@ -18,22 +19,22 @@ end
 
 #{{{
 class ClideConfig
-  include Singleton
-
   attr_accessor :params, :project_root
 
   ##
   # Read the clide configuration file.  If one does not exist, an attempt will be made to find the project root
   # directory from the current working directory up to the user's home directory.
   #{{{
-  def initialize
-    project_root = Pathname::pwd  # for now clide must be run from the project root
+  def initialize(project_root = Pathname::pwd)
 
+    puts project_root
     cliderc = (project_root + (ENV['CLIDERC'] || ".cliderc")).realdirpath
 
     if cliderc.exist? 
+      puts "DEBUG:  #{cliderc} exists!"
       @params = Psych.load_file cliderc
     else
+      puts "DEBUG:  #{cliderc} doesn't exist!"
       @params = {}
 
       @params[:project_root]      = project_root
@@ -45,9 +46,10 @@ class ClideConfig
       @params[:maven_output_file] = (@params[:clide_conf_dir] + "maven.out").realdirpath
       @params[:pom_md5]           = (@params[:clide_conf_dir] + "pom.md5").realdirpath
       @params[:effective_pom]     = (@params[:clide_conf_dir] + "epom.xml").realdirpath
+      @params[:all_dependencies]  = (@params[:clide_conf_dir] + "all_dependencies.yaml").realdirpath
 
       # module specific configuration directories, beneath each module directory, these files will exist
-      @params[:projects] = []
+      @params[:modules] = []
 
       save
     end
@@ -65,6 +67,10 @@ class ClideConfig
     @params[key] = value
   end
   #}}}
+
+  def has_key?(key)
+    ! @params[key].nil?
+  end
 
   #{{{
   ##
@@ -86,6 +92,7 @@ class ClideConfig
         end
       }
     end
+          config_outdated = true
 
     if config_outdated
       load_effective_pom
@@ -97,6 +104,15 @@ class ClideConfig
     File.open(@params[:cliderc], 'w+') { |rc_file|
       rc_file.write Psych.dump @params
     }
+  end
+
+  def ClideConfig.read(dir)
+    conf = ClideConfig.new dir
+    #TODO:  If there is a parent listed, and there is no parent in the pom, this should be an error instead
+    if conf.has_key? :parent
+      return ClideConfig.read conf[:parent]
+    end
+    conf
   end
 end
 #}}}
