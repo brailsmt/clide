@@ -14,7 +14,7 @@ $MVNCMD $@ | tee $JPR_MAVEN_OUTPUT_FILE
 mvnstatus=${PIPESTATUS[0]}
 
 if [[ $mvnstatus -eq 1 ]]; then
-    terminal-notifier -message "\"$MVNCMD $(echo $@ | sed 's/-/\-/g')\"" -title "$module build failed!" -group "$module: jpm build" -sound "Basso"
+    growlnotify	-m "\"$MVNCMD $(echo $@ | sed 's/-/\-/g')\"" -n "$module build failed!"
 else
-    terminal-notifier -message "\"$MVNCMD $(echo $@ | sed 's/-/\-/g')\"" -title "$module build succeeded!" -group "$module: jpm build" -sound "Glass"
+    growlnotify	-m "\"$MVNCMD $(echo $@ | sed 's/-/\-/g')\"" -n "$module build succeeded!"
 fi

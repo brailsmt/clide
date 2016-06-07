@@ -1,0 +1,41 @@
+#!/usr/local/bin/bash
+
+# clide-init must be called either from the directory containing the root pom.xml, or must be provided the path to the
+# root pom.xml for the project to init
+root_pom=${1:-$(pwd)/pom.xml}
+if [[ ! -f $root_pom ]]; then
+    echo "Could not locate a pom.xml!"
+    exit 1
+fi
+
+echo "Initializing clide.prj for $root_pom"
+
+#clide_prj_root_dir=$(echo $(dirname $root_pom) | sed "s!^\.!$(pwd)!")
+clide_prj_root_dir=$(dirname $root_pom)
+clide_prj_conf=$clide_prj_root_dir/$CLIDE_PRJ_CONF
+
+if [[ -f $clide_prj_conf ]]; then
+    echo "Clide configuration already exists for $clide_prj_conf!"
+    exit 1
+fi
+
+# if needed, create a .clide directory in the project root
+if [[ ! -d $clide_prj_root_dir/.clide ]]; then
+    mkdir $clide_prj_root_dir/.clide
+fi
+
+# write out config file that will be sourced for each project related clide-* command
+echo "unset clide_prj" > $clide_prj_conf
+echo "declare -A clide_prj" >> $clide_prj_conf
+echo "clide_prj[root_dir]=$clide_prj_root_dir" >> $clide_prj_conf
+echo "clide_prj[root_pom]=$root_pom" >> $clide_prj_conf
+echo "clide_prj[effective_pom]=$clide_prj_root_dir/.clide/epom.xml" >> $clide_prj_conf
+
+# source our brand new configuration
+. $clide_prj_conf
+
+# generate the effective pom and store it
+cd ${clide_prj[root_dir]}
+mvn help:effective-pom -Doutput=${clide_prj[effective_pom]}
+
+echo "Successfully initialized project $(basename $clide_prj_root_dir)"

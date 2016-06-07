@@ -1,94 +1,40 @@
-#!/usr/bin/env ruby
-#!/usr/bin/env ruby -r tracer
+#!/bin/bash
 # vim: fdm=marker
-
-require 'optparse'
-require 'pp'
-require 'yaml'
-
-require_relative '../lib/config'
-require_relative '../lib/project'
 
 # Top level command to manage a maven java project from the command line.
 
-#{{{
-class Clide
-  attr_accessor :conf, :projects
+# include some basic clide environment variables for clide scripts to use
+export CLIDE_GLOBAL_CONF=${CLIDE_GLOBAL_CONF:-/etc/cliderc}
+export CLIDE_CONF=${CLIDE_CONF:-$HOME/.cliderc}
+export CLIDE_PRJ_CONF=${CLIDE_PRJ_CONF:-.clide/cliderc}
 
-  def initialize
-    @conf = ClideConfig.new
-    @plugins  = {}
-    @commands = {}
-  end
+if [[ -f $CLIDE_GLOBAL_CONF ]]; then
+  . $CLIDE_GLOBAL_CONF
+fi
+if [[ -f $CLIDE_CONF ]]; then
+  . $CLIDE_CONF
+fi
+if [[ -f $CLIDE_PRJ_CONF ]]; then
+  . $CLIDE_PRJ_CONF
+fi
 
-  def Clide.is_command_registered?(cmdname)
-    @commands.has_key? cmdname
-  end
+CLIDE_BIN=$CLIDE_BIN:$PATH
 
-  #{{{
-  def generate_classpaths(artifacts = nil)
-    # generate the classpath for each module
-    @conf[:modules].each_key { |mod|
-      cpathfile = @conf[:clide_conf_dir] + mod + @conf[:module][:classpath]
+clide_cmd=$1
+cmd_path=''
+shift
+for dir in ${CLIDE_BIN//:/ }; do
+  echo find ${dir/#\~/$HOME} -type f -name clide-$clide_cmd 
+  _cmd_path=$(find ${dir/#\~/$HOME} -type f -name clide-$clide_cmd 2> /dev/null)
+  if [[ -x $_cmd_path ]]; then
+    cmd_path=$_cmd_path
+    break
+  fi
+done
 
-      classpath = Set.new
-      artifacts.each { |dep_coordinate|
-        classpath << @pom.dependencies[:all][dep_coordinate].get_path_to_dep
-      }
-    }
-    @conf[:classpath][:file].open('w+') { |file| 
-      file.write @conf[:classpath]
-    }
-  end
-  #}}}
+if [[ -z $cmd_path ]]; then
+  echo "Could not find $clide_cmd!  Check \$CLIDE_BIN and retry"
+  exit 1
+fi
 
-  def save
-    @conf.save
-  end
-
-  ##
-  # Initialize/Update clide by parsing the pom and storing the data in the .clide directory
-  #{{{
-  def init
-    # generate and load the effective pom and extract data from it so we don't need to parse it everytime
-    unless @conf[:effective_pom].exist?
-      `(cd #{@conf[:project_root]}; mvn help:effective-pom -Doutput=#{@conf[:effective_pom]})`
-    end
-    namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' }
-    epom = Nokogiri::XML(File.open(@conf[:effective_pom], 'r'))
-
-    Project.new(@conf, epom)
-  end
-  #}}}
-
-  #{{{
-  def clean
-    Pathname::glob(@conf[:clide_conf_dir] + '*').each { |file| file.delete }
-    @conf[:clide_conf_dir].rmdir
-    @conf[:cliderc].delete
-  end
-  #}}}
-
-  #{{{
-  def run(args)
-    cmd = args.first
-    case cmd
-    when "init", "update"
-      init
-    when "clean"
-      clean
-    end
-  end
-  #}}}
-end
-#}}}
-
-begin
-  clide = Clide.new
-  clide.run(ARGV)
-  clide.save
-rescue
-  puts $!
-  puts $!.backtrace
-  puts "<print help doc here>"
-end
+$cmd_path "$@"
