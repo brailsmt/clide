@@ -1,0 +1,11 @@
+#!/usr/local/bin/bash
+# vim: fdm=marker
+# cerner_2^5_2016
+# Generate cscope database for the java project
+
+. $CLIDE_PRJ_CONF
+(
+    cd ${clide_prj[root_dir]}
+    find $(find . -type d -name main -o -name test) -name '*.java' > cscope.files
+    cscope -bq
+)
