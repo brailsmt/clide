@@ -13,6 +13,7 @@ echo "Initializing clide.prj for $root_pom"
 #clide_prj_root_dir=$(echo $(dirname $root_pom) | sed "s!^\.!$(pwd)!")
 clide_prj_root_dir=$(dirname $root_pom)
 clide_prj_conf=$clide_prj_root_dir/$CLIDE_PRJ_CONF
+clide_prj_dir=$clide_prj_root_dir/.clide
 
 if [[ -f $clide_prj_conf ]]; then
     echo "Clide configuration already exists for $clide_prj_conf!"
@@ -20,16 +21,20 @@ if [[ -f $clide_prj_conf ]]; then
 fi
 
 # if needed, create a .clide directory in the project root
-if [[ ! -d $clide_prj_root_dir/.clide ]]; then
-    mkdir $clide_prj_root_dir/.clide
+if [[ ! -d $clide_prj_dir ]]; then
+    mkdir $clide_prj_dir
 fi
 
 # write out config file that will be sourced for each project related clide-* command
-echo "unset clide_prj" > $clide_prj_conf
-echo "declare -A clide_prj" >> $clide_prj_conf
-echo "clide_prj[root_dir]=$clide_prj_root_dir" >> $clide_prj_conf
-echo "clide_prj[root_pom]=$root_pom" >> $clide_prj_conf
-echo "clide_prj[effective_pom]=$clide_prj_root_dir/.clide/epom.xml" >> $clide_prj_conf
+echo "unset clide_prj"                                              > $clide_prj_conf
+echo "declare -A clide_prj"                                        >> $clide_prj_conf
+echo "clide_prj[root_dir]=$clide_prj_root_dir"                     >> $clide_prj_conf
+echo "clide_prj[root_pom]=$root_pom"                               >> $clide_prj_conf
+echo "clide_prj[prj_dir]=$clide_prj_dir"                           >> $clide_prj_conf
+echo "clide_prj[log]=$clide_prj_dir/clide.log"                     >> $clide_prj_conf
+echo "clide_prj[effective_pom]=$clide_prj_dir/epom.xml"            >> $clide_prj_conf
+echo "clide_prj[classpath_tstamp]=$clide_prj_dir/classpath.tstamp" >> $clide_prj_conf
+echo "clide_prj[last_compile]=$clide_prj_dir/last_compile.tstamp"  >> $clide_prj_conf
 
 # source our brand new configuration
 . $clide_prj_conf

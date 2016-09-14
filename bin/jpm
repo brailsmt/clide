@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# Wrapper around maven to always save the output.  
+# Wrapper around maven to always save the output and notify
 
 JPR_MAVEN_OUTPUT_FILE="${JPR_MAVEN_OUTPUT_FILE:-.clide/maven.out}"
 
-MVNCMD=/usr/local/bin/mvn
+MVNCMD=${MVNCMD:-/usr/local/bin/mvn}
 
 module=$(basename $(pwd))
-
 
 echo "$MVNCMD $@"
 $MVNCMD $@ | tee $JPR_MAVEN_OUTPUT_FILE

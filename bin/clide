@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 # vim: fdm=marker
 
 # Top level command to manage a maven java project from the command line.
@@ -24,7 +24,6 @@ clide_cmd=$1
 cmd_path=''
 shift
 for dir in ${CLIDE_BIN//:/ }; do
-  echo find ${dir/#\~/$HOME} -type f -name clide-$clide_cmd 
   _cmd_path=$(find ${dir/#\~/$HOME} -type f -name clide-$clide_cmd 2> /dev/null)
   if [[ -x $_cmd_path ]]; then
     cmd_path=$_cmd_path
