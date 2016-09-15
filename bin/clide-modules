@@ -1,0 +1,7 @@
+#/usr/local/bin/bash
+# cerner_2^5_2016
+# vim: ft=sh
+
+. $CLIDE_PRJ_CONF
+
+echo $(xpath ${clide_prj[root_pom]} '/project/modules/module' 2>/dev/null | gsed 's/<\/*module>/ /g')
