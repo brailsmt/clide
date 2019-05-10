@@ -1,16 +1,20 @@
 #/usr/local/bin/bash
 # vim: ft=sh
 
-. $CLIDE_PRJ_CONF
+source $CLIDE_INSTALL_BASE/lib/common.sh
 
+clide_prj_root_dir=$(prj_root_dir)
+. $clide_prj_root_dir/$CLIDE_PRJ_CONF
 
-newer_poms=$(find . -name pom.xml -newer ${clide_prj[classpath_tstamp]} 2> /dev/null)
-if [[ -f ${clide_prj[classpath_tstamp]} && -z $newer_poms ]]; then
-    echo "POM(s) are unchanged since last classpath generation" | tee ${clide_prj[log]}
-    exit 0;
+if [[ $1 != "-f" ]]; then
+    newer_poms=$(find ${clide_prj[root_dir]} -name pom.xml -newer ${clide_prj[classpath_tstamp]} 2> /dev/null)
+    if [[ -f ${clide_prj[classpath_tstamp]} && -z $newer_poms ]]; then
+        echo "POM(s) are unchanged since last classpath generation" | tee ${clide_prj[log]}
+        exit 0;
+    fi
 fi
 
-modules=$(xpath pom.xml '/project/modules/module' 2>/dev/null | gsed 's/<\/*module>/ /g')
+modules=$(xpath ${clide_prj[root_pom]} '/project/modules/module' 2>/dev/null | gsed 's/<\/*module>/ /g')
 if [[ -z $modules ]]; then
     echo "Updating ${clide_prj[root_dir]}/.classpath..." | tee ${clide_prj[log]}
     mvn dependency:build-classpath -Dmdep.outputFile=.classpath 2> /dev/null >> ${clide_prj[log]}

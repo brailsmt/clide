@@ -1,12 +1,14 @@
 #!/usr/local/bin/bash
 # vim: fdm=marker
 
-# Top level command to manage a maven java project from the command line.
+if [[ -z "$CLIDE_INSTALL_BASE" ]]; then
+    echo "You must set CLIDE_INSTALL_BASE before using clide!"
+    exit 1
+fi
 
-# include some basic clide environment variables for clide scripts to use
-export CLIDE_GLOBAL_CONF=${CLIDE_GLOBAL_CONF:-/etc/cliderc}
-export CLIDE_CONF=${CLIDE_CONF:-$HOME/.cliderc}
-export CLIDE_PRJ_CONF=${CLIDE_PRJ_CONF:-.clide/cliderc}
+source $CLIDE_INSTALL_BASE/lib/common.sh
+
+# Top level command to manage a maven java project from the command line.
 
 if [[ -f $CLIDE_GLOBAL_CONF ]]; then
   . $CLIDE_GLOBAL_CONF
@@ -18,7 +20,9 @@ if [[ -f $CLIDE_PRJ_CONF ]]; then
   . $CLIDE_PRJ_CONF
 fi
 
-CLIDE_BIN=$CLIDE_BIN:$PATH
+if [[ -z $CLIDE_BIN ]]; then
+    export CLIDE_BIN=$CLIDE_INSTALL_BASE/bin:$PATH
+fi
 
 clide_cmd=$1
 cmd_path=''
@@ -32,7 +36,7 @@ for dir in ${CLIDE_BIN//:/ }; do
 done
 
 if [[ -z $cmd_path ]]; then
-  echo "Could not find $clide_cmd!  Check \$CLIDE_BIN and retry"
+  echo "Could not find $clide_cmd!  Check \$CLIDE_INSTALL_BASE and \$CLIDE_BIN and retry"
   exit 1
 fi
 

@@ -1,7 +1,0 @@
-#!/bin/bash
-
-grep '^\[ERROR\] .*\.java:.*$' | sort | uniq > .errorfile
-
-#gvim -c 'set errorformat+=[%tRROR]\ %f:[%l,%c]\ %r' -q .errorfile
-gvim -c 'set errorformat=[%tRROR]\ %f:[%l\\,%c]\ %m' -q .errorfile
-

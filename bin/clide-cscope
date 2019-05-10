@@ -3,7 +3,17 @@
 # cerner_2^5_2016
 # Generate cscope database for the java project
 
-. $CLIDE_PRJ_CONF
+source $CLIDE_INSTALL_BASE/lib/common.sh
+
+clide_prj_root_dir=$(prj_root_dir)
+
+if [[ ! -f $clide_prj_root_dir/$CLIDE_PRJ_CONF ]]; then
+    echo "No valid clide project configuration available"
+    exit 1
+fi
+
+source $clide_prj_root_dir/$CLIDE_PRJ_CONF
+
 (
     cd ${clide_prj[root_dir]}
     find $(find . -type d -name main -o -name test) -name '*.java' > cscope.files

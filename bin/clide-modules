@@ -2,6 +2,16 @@
 # cerner_2^5_2016
 # vim: ft=sh
 
-. $CLIDE_PRJ_CONF
+source $CLIDE_INSTALL_BASE/lib/common.sh
+
+clide_prj_root_dir=$(prj_root_dir)
+
+if [[ ! -f $clide_prj_root_dir/$CLIDE_PRJ_CONF ]]; then
+    echo "No valid clide project configuration available"
+    exit 1
+fi
+
+source $clide_prj_root_dir/$CLIDE_PRJ_CONF
+
 
 echo $(xpath ${clide_prj[root_pom]} '/project/modules/module' 2>/dev/null | gsed 's/<\/*module>/ /g')
