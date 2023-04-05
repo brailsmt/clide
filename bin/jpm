@@ -4,7 +4,7 @@
 source $CLIDE_INSTALL_BASE/lib/common.sh
 clide_prj_root_dir=$(prj_root_dir)
 
-echo if [[ ! -f $clide_prj_root_dir/$CLIDE_PRJ_CONF ]]
+echo $clide_prj_root_dir/$CLIDE_PRJ_CONF
 if [[ ! -f $clide_prj_root_dir/$CLIDE_PRJ_CONF ]]; then
     echo "No valid clide project configuration available"
     exit 1
@@ -12,17 +12,16 @@ fi
 
 source $clide_prj_root_dir/$CLIDE_PRJ_CONF
 
-
-
 JPR_MAVEN_OUTPUT_FILE="${clide_prj[maven_log]}"
 
 MVNCMD=${MVNCMD:-/usr/local/bin/mvn}
+echo $MVNCMD
 
 module=$(basename $(pwd))
 
 echo "$MVNCMD $@"
 (
-cd ${clide_prj[root_dir]}
+#cd ${clide_prj[root_dir]}
 $MVNCMD $@ | tee $JPR_MAVEN_OUTPUT_FILE
 mvnstatus=${PIPESTATUS[0]}
 

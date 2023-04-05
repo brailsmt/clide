@@ -5,8 +5,7 @@ source $CLIDE_INSTALL_BASE/lib/common.sh
 # clide-init must be called either from the directory containing the root pom.xml, or must be provided the path to the
 # root pom.xml for the project to init
 
-clide_prj_root_dir=$(dirname $(git rev-parse --git-dir))
-root_pom=$clide_prj_root_dir/pom.xml
+root_pom=$(prj_root_dir)/pom.xml
 if [[ ! -f $root_pom ]]; then
     clide_log "Could not locate a pom.xml!"
     exit 1
