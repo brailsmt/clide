@@ -1,9 +1,7 @@
 #!/usr/bin/env ruby
-#!/usr/bin/env ruby -r tracer
 # vim: fdm=marker
 
 require 'optparse'
-require 'pp'
 require 'yaml'
 
 require_relative '../lib/config'
@@ -11,7 +9,7 @@ require_relative '../lib/project'
 
 # Top level command to manage a maven java project from the command line.
 
-#{{{
+# {{{
 class Clide
   attr_accessor :conf, :projects
 
@@ -21,11 +19,11 @@ class Clide
     @commands = {}
   end
 
-  def Clide.is_command_registered?(cmdname)
-    @commands.has_key? cmdname
+  def self.is_command_registered?(cmdname)
+    @commands.key? cmdname
   end
 
-  #{{{
+  # {{{
   def generate_classpaths(artifacts = nil)
     # generate the classpath for each module
     @conf[:modules].each_key { |mod|
@@ -48,10 +46,12 @@ class Clide
 
   ##
   # Initialize/Update clide by parsing the pom and storing the data in the .clide directory
-  #{{{
+  # {{{
   def init
+    puts "Creating effective pom..."
     # generate and load the effective pom and extract data from it so we don't need to parse it everytime
     unless @conf[:effective_pom].exist?
+      puts "here"
       `(cd #{@conf[:project_root]}; mvn help:effective-pom -Doutput=#{@conf[:effective_pom]})`
     end
     namespaces = { 'xmlns' => 'http://maven.apache.org/POM/4.0.0' }
@@ -61,7 +61,7 @@ class Clide
   end
   #}}}
 
-  #{{{
+  # {{{
   def clean
     Pathname::glob(@conf[:clide_conf_dir] + '*').each { |file| file.delete }
     @conf[:clide_conf_dir].rmdir
@@ -69,7 +69,7 @@ class Clide
   end
   #}}}
 
-  #{{{
+  # {{{
   def run(args)
     cmd = args.first
     case cmd

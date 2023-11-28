@@ -5,7 +5,6 @@
 # contents:   A clide utility to parse a maven pom and provide useful information about a project.
 
 require 'nokogiri'
-require 'pp'
 require 'set'
 require 'yaml'
 
@@ -127,7 +126,7 @@ class Project
       end
 
       subrc = @conf[:project_root] + artifactId + ".cliderc"
-      unless subrc.exist?
+      if subrc.exist?
         hsh = {
           # this tells clide that this is a sub-project, and must be retained
           parent: @conf[:project_root]
